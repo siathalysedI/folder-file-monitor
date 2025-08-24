@@ -14,7 +14,7 @@ LOG_DIR="$HOME/Logs"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 SCRIPT_FILE="$SCRIPT_DIR/folder_file_monitor.sh"
 PLIST_FILE="$LAUNCH_AGENTS_DIR/com.user.folder.filemonitor.plist"
-WATCH_DIR="/Users/dragon/Documents/wrk/pers/action/work/gob-nvo-leon"
+WATCH_DIR="{folder}"
 
 echo "📋 Configuración:"
 echo "   Script principal: $SCRIPT_FILE"
