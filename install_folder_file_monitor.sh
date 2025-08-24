@@ -14,7 +14,7 @@ LOG_DIR="$HOME/Logs"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 SCRIPT_FILE="$SCRIPT_DIR/folder_file_monitor.sh"
 PLIST_FILE="$LAUNCH_AGENTS_DIR/com.user.folder.filemonitor.plist"
-WATCH_DIR="{folder}"
+WATCH_DIR="{FOLDER}"
 
 echo "📋 Configuración:"
 echo "   Script principal: $SCRIPT_FILE"
@@ -95,8 +95,8 @@ EOF
 }
 
 # Session ID único
-SESSION_ID="session_$(date +%Y%m%d_%H%M%S)_$$"
-COMPUTER_NAME=$(scutil --get ComputerName)
+SESSION_ID="session_$(date +%Y%m%d_%H%M%S)_$"
+COMPUTER_NAME=$(scutil --get ComputerName 2>/dev/null || echo "Unknown")
 
 # Función de cleanup al cerrar
 cleanup() {
