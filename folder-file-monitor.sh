@@ -4,7 +4,7 @@
 # Monitoreo automático de archivos de cualquier folder
 
 # Configuración - NOMBRES CONSISTENTES
-WATCH_DIR="/Users/dragon/Documents/wrk/pers/action/work/gob-nvo-leon"
+WATCH_DIR="{FOLDER}"
 LOG_FILE="$HOME/Logs/folder_file_monitor.log"
 DB_FILE="$HOME/Logs/folder_file_monitor.db"
 PID_FILE="$HOME/Logs/folder_file_monitor.pid"
