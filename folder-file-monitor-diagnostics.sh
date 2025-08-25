@@ -90,17 +90,32 @@ if [ -f ~/Logs/folder_file_monitor.db ]; then
         WHERE datetime(timestamp) >= datetime('now', '-24 hours');" 2>/dev/null || echo "❌ Recent activity query failed"
     
     echo ""
-    echo "🔥 Most active files (last 7 days):"
+    echo "🔥 Most active files with event breakdown (last 7 days):"
     sqlite3 -header -column ~/Logs/folder_file_monitor.db "
         SELECT 
             filepath as full_path,
-            COUNT(*) as modifications,
-            MAX(timestamp) as last_modified
+            COUNT(*) as total_changes,
+            MAX(timestamp) as last_change,
+            SUM(CASE WHEN event_type = 'CREATED' THEN 1 ELSE 0 END) as created,
+            SUM(CASE WHEN event_type = 'MODIFIED' THEN 1 ELSE 0 END) as modified,
+            SUM(CASE WHEN event_type = 'DELETED' THEN 1 ELSE 0 END) as deleted
         FROM file_changes 
         WHERE datetime(timestamp) >= datetime('now', '-7 days')
         GROUP BY filepath 
-        ORDER BY modifications DESC, last_modified DESC
+        ORDER BY total_changes DESC, last_change DESC
         LIMIT 5;" 2>/dev/null || echo "❌ Activity analysis failed"
+
+    echo ""
+    echo "📊 Event type distribution (last 7 days):"
+    sqlite3 -header -column ~/Logs/folder_file_monitor.db "
+        SELECT 
+            event_type,
+            COUNT(*) as count,
+            ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM file_changes WHERE datetime(timestamp) >= datetime('now', '-7 days')), 2) as percentage
+        FROM file_changes 
+        WHERE datetime(timestamp) >= datetime('now', '-7 days')
+        GROUP BY event_type 
+        ORDER BY count DESC;" 2>/dev/null || echo "❌ Event distribution analysis failed"
 
     echo ""
     echo "🗄️ Database integrity check:"
@@ -226,15 +241,29 @@ else
 fi
 
 echo ""
-echo "🔟 Quick functionality test:"
-echo "============================"
+echo "🔟 Enhanced functionality test:"
+echo "=============================="
 if [ -f ~/Scripts/folder_file_monitor.sh ]; then
-    echo "📊 Testing recent command (last 1 hour):"
+    echo "📊 Testing recent command (last 1 hour, all events):"
     ~/Scripts/folder_file_monitor.sh recent 1 2>/dev/null || echo "❌ Recent command failed"
+    
+    echo ""
+    echo "🔍 Testing event filtering (last 1 hour, modified only):"
+    ~/Scripts/folder_file_monitor.sh recent 1 modified 2>/dev/null || echo "❌ Event filtering failed"
+    
+    echo ""
+    echo "📋 Testing status with event filtering (modified events only):"
+    ~/Scripts/folder_file_monitor.sh status modified 2>/dev/null || echo "❌ Status filtering failed"
     
     echo ""
     echo "📋 Testing list command:"
     ~/Scripts/folder_file_monitor.sh list 2>/dev/null || echo "❌ List command failed"
+    
+    echo ""
+    echo "🧪 Testing event filter parsing:"
+    # Test if the script accepts pipe-separated event filters
+    echo "   Testing: created|modified filter"
+    ~/Scripts/folder_file_monitor.sh recent 1 "created|modified" >/dev/null 2>&1 && echo "   ✅ Pipe filtering works" || echo "   ❌ Pipe filtering failed"
 else
     echo "❌ Cannot perform functionality tests - script missing"
 fi
@@ -283,3 +312,47 @@ fi
 
 echo ""
 log_diagnostic "Enhanced diagnostics completed with $ISSUES critical issues and $WARNINGS warnings"
+echo ""
+echo "🎯 ENHANCED FEATURES VERIFICATION:"
+echo "================================="
+if [ -f ~/Scripts/folder_file_monitor.sh ]; then
+    echo "✅ Enhanced script with event filtering available"
+    if grep -q "parse_event_filter" ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "✅ Event filtering functionality detected"
+    else
+        echo "⚠️  Event filtering functionality may not be available"
+    fi
+    
+    if grep -q "CREATED.*MODIFIED.*DELETED" ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "✅ Complete event tracking (CREATED, MODIFIED, DELETED) detected"
+    else
+        echo "⚠️  Complete event tracking may not be available"
+    fi
+    
+    if [ -f ~/Logs/folder_file_monitor.db ]; then
+        # Check if database has event_type index
+        if sqlite3 ~/Logs/folder_file_monitor.db "PRAGMA index_list(file_changes);" 2>/dev/null | grep -q "idx_event_type"; then
+            echo "✅ Enhanced database indexing (event_type) detected"
+        else
+            echo "⚠️  Enhanced database indexing may need update"
+        fi
+    fi
+else
+    echo "❌ Enhanced script not available"
+fi
+
+echo ""
+echo "🚀 RECOMMENDED ACTIONS:"
+echo "======================"
+if [ $ISSUES -gt 0 ]; then
+    echo "🔧 Critical issues found - run reinstallation:"
+    echo "   curl -fsSL https://raw.githubusercontent.com/siathalysedI/folder-file-monitor/main/reinstall_folder_file_monitor.sh | bash"
+elif [ $WARNINGS -gt 0 ]; then
+    echo "⚡ Minor issues found - run update:"
+    echo "   curl -fsSL https://raw.githubusercontent.com/siathalysedI/folder-file-monitor/main/folder_file_monitor_update.sh | bash"
+else
+    echo "✨ System optimal - try the new enhanced features:"
+    echo "   ~/Scripts/folder_file_monitor.sh status modified"
+    echo "   ~/Scripts/folder_file_monitor.sh recent 6 created|modified"
+    echo "   ~/Scripts/folder_file_monitor.sh recent 1 deleted"
+fi
