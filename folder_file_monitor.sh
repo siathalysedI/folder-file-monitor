@@ -87,9 +87,16 @@ fi
 # Create directories if they don't exist
 mkdir -p "$HOME/Logs"
 
-# Logging function with timestamp
+# Enhanced logging function with timestamp and error handling
 log_message() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] $1" | tee -a "$LOG_FILE"
+}
+
+# Enhanced error logging function
+log_error() {
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] ERROR: $1" | tee -a "$LOG_FILE"
 }
 
 # Initialize SQLite database
@@ -117,6 +124,7 @@ CREATE TABLE IF NOT EXISTS monitor_sessions (
 CREATE INDEX IF NOT EXISTS idx_timestamp ON file_changes(timestamp);
 CREATE INDEX IF NOT EXISTS idx_filename ON file_changes(filename);
 CREATE INDEX IF NOT EXISTS idx_session ON file_changes(session_id);
+CREATE INDEX IF NOT EXISTS idx_filepath ON file_changes(filepath);
 EOF
 }
 
@@ -129,7 +137,7 @@ cleanup() {
     log_message "Stopping Folder File Monitor (Session: $SESSION_ID)"
     
     # Update session in DB
-    sqlite3 "$DB_FILE" <<EOF
+    sqlite3 "$DB_FILE" <<EOF 2>/dev/null || true
 UPDATE monitor_sessions 
 SET end_time = '$(date '+%Y-%m-%d %H:%M:%S')',
     files_monitored = (SELECT COUNT(*) FROM file_changes WHERE session_id = '$SESSION_ID')
@@ -145,7 +153,7 @@ check_running() {
     if [ -f "$PID_FILE" ]; then
         local pid=$(cat "$PID_FILE")
         if ps -p $pid > /dev/null 2>&1; then
-            log_message "⚠️ Folder File Monitor is already running (PID: $pid)"
+            log_error "Folder File Monitor is already running (PID: $pid)"
             exit 1
         else
             rm -f "$PID_FILE"
@@ -153,7 +161,7 @@ check_running() {
     fi
 }
 
-# Log file change
+# Enhanced file change logging with full paths
 log_file_change() {
     local filepath="$1"
     local event="$2"
@@ -167,11 +175,11 @@ log_file_change() {
         hash=$(shasum -a 256 "$filepath" 2>/dev/null | cut -d' ' -f1 || echo "error")
     fi
     
-    # Compact log
-    log_message "$event: $filename ($size bytes)"
+    # Enhanced log with full path
+    log_message "$event: $filepath ($size bytes)"
     
-    # Insert into database
-    sqlite3 "$DB_FILE" <<EOF
+    # Insert into database with error handling
+    sqlite3 "$DB_FILE" <<EOF 2>/dev/null || log_error "Failed to insert file change record"
 INSERT INTO file_changes (timestamp, filepath, filename, event_type, file_size, file_hash, session_id)
 VALUES ('$timestamp', '$filepath', '$filename', '$event', $size, '$hash', '$SESSION_ID');
 EOF
@@ -191,14 +199,14 @@ start_daemon() {
     log_message "💻 Computer: $COMPUTER_NAME"
     
     # Register new session
-    sqlite3 "$DB_FILE" <<EOF
+    sqlite3 "$DB_FILE" <<EOF 2>/dev/null || log_error "Failed to register session"
 INSERT INTO monitor_sessions (session_id, start_time, computer_name)
 VALUES ('$SESSION_ID', '$(date '+%Y-%m-%d %H:%M:%S')', '$COMPUTER_NAME');
 EOF
     
     # Pre-checks
     if ! command -v fswatch &> /dev/null; then
-        log_message "❌ ERROR: fswatch not installed"
+        log_error "fswatch not installed"
         exit 1
     fi
     
@@ -207,7 +215,7 @@ EOF
         if [ ! -d "$dir" ]; then
             log_message "Directory does not exist: $dir"
             log_message "📁 Creating directory..."
-            mkdir -p "$dir"
+            mkdir -p "$dir" || log_error "Failed to create directory: $dir"
         fi
         log_message "📂 Directory: $dir"
     done
@@ -226,7 +234,7 @@ EOF
         --exclude='\.swp$' \
         --exclude='\.tmp$' \
         --exclude='\.temp$' \
-        "${WATCH_DIRS[@]}" | while read filepath
+        "${WATCH_DIRS[@]}" 2>/dev/null | while read filepath
     do
         # Exclude temporary and system files
         if [[ ! "$filepath" =~ /\.git/|\.DS_Store|~\$|\.swp$|\.tmp$|\.temp$ ]]; then
@@ -239,7 +247,7 @@ EOF
     done
 }
 
-# Show service status
+# Enhanced status display with full paths and 7-day default
 show_status() {
     echo "📊 Folder File Monitor Status"
     echo "============================="
@@ -264,28 +272,48 @@ show_status() {
             
             if [ -f "$DB_FILE" ]; then
                 echo ""
-                echo "📈 TODAY's Statistics:"
+                echo "📈 Statistics (Last 7 days):"
                 sqlite3 -header -column "$DB_FILE" "
                     SELECT 
-                        COUNT(*) as changes_today,
+                        COUNT(*) as total_changes,
                         COUNT(DISTINCT filename) as unique_files,
+                        COUNT(DISTINCT filepath) as unique_paths,
                         MAX(timestamp) as last_change
                     FROM file_changes 
-                    WHERE date(timestamp) = date('now');
-                "
+                    WHERE date(timestamp) >= date('now', '-7 days');
+                " 2>/dev/null || echo "Database error"
                 
                 echo ""
-                echo "🔥 Most modified files (last 7 days):"
+                echo "🔥 Most modified files (Last 7 days):"
                 sqlite3 -header -column "$DB_FILE" "
                     SELECT 
-                        filename,
-                        COUNT(*) as modifications
+                        filepath as full_path,
+                        COUNT(*) as modifications,
+                        MAX(timestamp) as last_modified
                     FROM file_changes 
                     WHERE date(timestamp) >= date('now', '-7 days')
-                    GROUP BY filename 
-                    ORDER BY modifications DESC 
-                    LIMIT 5;
-                "
+                    GROUP BY filepath 
+                    ORDER BY modifications DESC, last_modified DESC
+                    LIMIT 10;
+                " 2>/dev/null || echo "Database error"
+                
+                echo ""
+                echo "📅 Recent activity (Last 7 days):"
+                sqlite3 -header -column "$DB_FILE" "
+                    SELECT 
+                        timestamp as date_time,
+                        filepath as full_path,
+                        event_type as event,
+                        CASE 
+                            WHEN file_size < 1024 THEN file_size || ' B'
+                            WHEN file_size < 1048576 THEN ROUND(file_size/1024.0, 1) || ' KB'
+                            ELSE ROUND(file_size/1048576.0, 1) || ' MB'
+                        END as size
+                    FROM file_changes 
+                    WHERE date(timestamp) >= date('now', '-7 days')
+                    ORDER BY timestamp DESC 
+                    LIMIT 20;
+                " 2>/dev/null || echo "Database error"
             fi
         else
             echo "❌ Status: STOPPED (obsolete PID file)"
@@ -343,15 +371,17 @@ stop_daemon() {
     fi
 }
 
-# Show recent history
+# Enhanced recent history with hours parameter and full paths
 show_recent() {
+    local hours=${1:-24}  # Default to 24 hours if no parameter provided
+    
     if [ -f "$DB_FILE" ]; then
-        echo "📋 Last 15 changes:"
-        echo "=================="
+        echo "📋 File changes in the last $hours hours:"
+        echo "======================================="
         sqlite3 -header -column "$DB_FILE" "
             SELECT 
-                substr(timestamp, 12, 8) as time,
-                filename,
+                timestamp as date_time,
+                filepath as full_path,
                 event_type as event,
                 CASE 
                     WHEN file_size < 1024 THEN file_size || ' B'
@@ -359,10 +389,21 @@ show_recent() {
                     ELSE ROUND(file_size/1048576.0, 1) || ' MB'
                 END as size
             FROM file_changes 
-            WHERE date(timestamp) = date('now')
-            ORDER BY timestamp DESC 
-            LIMIT 15;
-        "
+            WHERE datetime(timestamp) >= datetime('now', '-$hours hours')
+            ORDER BY timestamp DESC;
+        " 2>/dev/null || echo "❌ Database error"
+        
+        echo ""
+        echo "📊 Summary for last $hours hours:"
+        sqlite3 -header -column "$DB_FILE" "
+            SELECT 
+                COUNT(*) as total_changes,
+                COUNT(DISTINCT filepath) as unique_files,
+                MIN(timestamp) as first_change,
+                MAX(timestamp) as last_change
+            FROM file_changes 
+            WHERE datetime(timestamp) >= datetime('now', '-$hours hours');
+        " 2>/dev/null || echo "❌ Database error"
     else
         echo "❌ No database available"
     fi
@@ -375,6 +416,7 @@ export_data() {
         sqlite3 -header -csv "$DB_FILE" "
             SELECT 
                 timestamp,
+                filepath,
                 filename,
                 event_type,
                 file_size,
@@ -382,9 +424,16 @@ export_data() {
                 session_id
             FROM file_changes 
             ORDER BY timestamp DESC;
-        " > "$export_file"
-        echo "📊 Data exported to: $export_file"
-        echo "📍 Location: $(pwd)/$export_file"
+        " > "$export_file" 2>/dev/null
+        
+        if [ $? -eq 0 ]; then
+            echo "📊 Data exported to: $export_file"
+            echo "📍 Location: $(pwd)/$export_file"
+            echo "📈 Total records: $(wc -l < "$export_file" | tr -d ' ')"
+        else
+            log_error "Failed to export data"
+            echo "❌ Export failed - check database"
+        fi
     else
         echo "❌ No database to export"
     fi
@@ -408,7 +457,7 @@ case "$1" in
         show_status
         ;;
     "recent")
-        show_recent
+        show_recent "$2"
         ;;
     "export")
         export_data
@@ -436,16 +485,21 @@ case "$1" in
     *)
         echo "🛠️ Folder File Monitor - Available commands:"
         echo "============================================"
-        echo "  daemon   - Run as daemon (internal use)"
-        echo "  start    - Start monitor in background"
-        echo "  stop     - Stop monitor"
-        echo "  status   - View status and statistics"
-        echo "  recent   - Show today's changes"
-        echo "  export   - Export data to CSV"
-        echo "  add      - Add directory to monitoring"
-        echo "  list     - List configured directories"
-        echo "  restart  - Restart monitor"
-        echo "  logs     - View latest log lines"
+        echo "  daemon           - Run as daemon (internal use)"
+        echo "  start            - Start monitor in background"
+        echo "  stop             - Stop monitor"
+        echo "  status           - View status and statistics (last 7 days)"
+        echo "  recent [HOURS]   - Show changes in last N hours (default: 24)"
+        echo "  export           - Export data to CSV"
+        echo "  add              - Add directory to monitoring"
+        echo "  list             - List configured directories"
+        echo "  restart          - Restart monitor"
+        echo "  logs             - View latest log lines"
+        echo ""
+        echo "Examples:"
+        echo "  $0 recent        - Show last 24 hours"
+        echo "  $0 recent 6      - Show last 6 hours"
+        echo "  $0 recent 168    - Show last 7 days"
         echo ""
         echo "💡 Monitor starts automatically on login"
         ;;
