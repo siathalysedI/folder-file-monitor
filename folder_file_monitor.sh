@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Folder File Monitor Daemon - DEFINITIVE VERSION
-# Automatic file monitoring for any folder
+# Automatic file and folder monitoring for any directory
 
 # Configuration - CONSISTENT NAMES
 CONFIG_FILE="$HOME/.folder_monitor_config"
@@ -99,7 +99,7 @@ log_error() {
     echo "[$timestamp] ERROR: $1" | tee -a "$LOG_FILE"
 }
 
-# Initialize SQLite database
+# Initialize SQLite database with enhanced schema
 init_database() {
     sqlite3 "$DB_FILE" <<EOF
 CREATE TABLE IF NOT EXISTS file_changes (
@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS file_changes (
     filepath TEXT NOT NULL,
     filename TEXT NOT NULL,
     event_type TEXT NOT NULL,
+    file_type TEXT NOT NULL, -- 'FILE' or 'DIRECTORY'
     file_size INTEGER,
     file_hash TEXT,
     session_id TEXT
@@ -126,6 +127,8 @@ CREATE INDEX IF NOT EXISTS idx_filename ON file_changes(filename);
 CREATE INDEX IF NOT EXISTS idx_session ON file_changes(session_id);
 CREATE INDEX IF NOT EXISTS idx_filepath ON file_changes(filepath);
 CREATE INDEX IF NOT EXISTS idx_event_type ON file_changes(event_type);
+CREATE INDEX IF NOT EXISTS idx_file_type ON file_changes(file_type);
+CREATE INDEX IF NOT EXISTS idx_composite ON file_changes(timestamp, event_type, file_type);
 EOF
 }
 
@@ -162,7 +165,7 @@ check_running() {
     fi
 }
 
-# Enhanced file change logging with full paths and proper event types
+# Enhanced file/folder change logging with full paths and proper event detection
 log_file_change() {
     local filepath="$1"
     local event="$2"
@@ -170,23 +173,54 @@ log_file_change() {
     local filename=$(basename "$filepath")
     local size=0
     local hash="deleted"
+    local file_type="FILE"
     
-    if [ -f "$filepath" ]; then
+    # Determine file type and get properties
+    if [ -d "$filepath" ]; then
+        file_type="DIRECTORY"
+        size=0
+        hash="directory"
+    elif [ -f "$filepath" ]; then
+        file_type="FILE"
         size=$(stat -f%z "$filepath" 2>/dev/null || echo "0")
         hash=$(shasum -a 256 "$filepath" 2>/dev/null | cut -d' ' -f1 || echo "error")
     fi
     
-    # Enhanced log with full path and proper event type
-    log_message "$event: $filepath ($size bytes)"
+    # Enhanced log with full path and file type
+    log_message "$event: [$file_type] $filepath ($size bytes)"
     
-    # Insert into database with error handling
+    # Insert into database with error handling - force immediate insert
     sqlite3 "$DB_FILE" <<EOF 2>/dev/null || log_error "Failed to insert file change record"
-INSERT INTO file_changes (timestamp, filepath, filename, event_type, file_size, file_hash, session_id)
-VALUES ('$timestamp', '$filepath', '$filename', '$event', $size, '$hash', '$SESSION_ID');
+INSERT INTO file_changes (timestamp, filepath, filename, event_type, file_type, file_size, file_hash, session_id)
+VALUES ('$timestamp', '$filepath', '$filename', '$event', '$file_type', $size, '$hash', '$SESSION_ID');
 EOF
+    
+    # Force database sync for immediate visibility
+    sqlite3 "$DB_FILE" "PRAGMA synchronous = NORMAL;" 2>/dev/null || true
 }
 
-# Main daemon function with enhanced event detection
+# Function to handle nested directory creation
+handle_nested_directory_creation() {
+    local fullpath="$1"
+    local parent_dir=$(dirname "$fullpath")
+    
+    # Check if parent directory was recently created (within last 5 seconds)
+    if [ -d "$parent_dir" ] && [ "$parent_dir" != "/" ] && [[ ! "$parent_dir" =~ ^/Users/[^/]+$ ]]; then
+        local recent_parent=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM file_changes WHERE filepath = '$parent_dir' AND datetime(timestamp) >= datetime('now', '-5 seconds') AND event_type = 'CREATED';" 2>/dev/null || echo "0")
+        if [ "$recent_parent" -eq 0 ]; then
+            # Check if this directory is new (not in database)
+            local parent_exists=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM file_changes WHERE filepath = '$parent_dir';" 2>/dev/null || echo "0")
+            if [ "$parent_exists" -eq 0 ]; then
+                # Recursively check parent's parent
+                handle_nested_directory_creation "$parent_dir"
+                # Log parent directory creation
+                log_file_change "$parent_dir" "CREATED"
+            fi
+        fi
+    fi
+}
+
+# Main daemon function with enhanced event detection for files and folders
 start_daemon() {
     check_running
     echo $$ > "$PID_FILE"
@@ -223,35 +257,56 @@ EOF
     
     log_message "✅ Folder File Monitor started successfully (PID: $$)"
     
-    # Enhanced monitoring with proper event detection
+    # Enhanced monitoring with comprehensive event detection including directories
+    # Remove most exclusions to catch all files including .key files
     fswatch -r \
         --event Created \
         --event Updated \
         --event Removed \
-        --exclude='.git' \
-        --exclude='.DS_Store' \
+        --event MovedFrom \
+        --event MovedTo \
+        --exclude='\.DS_Store$' \
+        --exclude='/\.git/' \
         --exclude='~$' \
         --exclude='\.swp$' \
         --exclude='\.tmp$' \
-        --exclude='\.temp$' \
+        --latency 0.1 \
         "${WATCH_DIRS[@]}" 2>/dev/null | while read filepath
     do
-        # Exclude temporary and system files
-        if [[ ! "$filepath" =~ /\.git/|\.DS_Store|~\$|\.swp$|\.tmp$|\.temp$ ]]; then
-            # Determine event type based on file existence and previous state
-            if [ -f "$filepath" ]; then
-                # Check if this is a new file by looking for recent records
-                recent_record=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM file_changes WHERE filepath = '$filepath' AND datetime(timestamp) >= datetime('now', '-10 seconds');" 2>/dev/null || echo "0")
-                if [ "$recent_record" -eq 0 ]; then
-                    # Check if file existed before by looking at all records
-                    file_exists_in_db=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM file_changes WHERE filepath = '$filepath';" 2>/dev/null || echo "0")
-                    if [ "$file_exists_in_db" -eq 0 ]; then
-                        log_file_change "$filepath" "CREATED"
-                    else
+        # Only exclude very specific temporary files, include everything else (.key files, directories, etc.)
+        if [[ ! "$filepath" =~ \.DS_Store$|/\.git/|~$|\.swp$|\.tmp$ ]]; then
+            
+            # Handle different event types with improved detection
+            if [ -d "$filepath" ]; then
+                # Directory events
+                local dir_exists_in_db=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM file_changes WHERE filepath = '$filepath' AND event_type = 'CREATED';" 2>/dev/null || echo "0")
+                if [ "$dir_exists_in_db" -eq 0 ]; then
+                    # Handle nested directory creation
+                    handle_nested_directory_creation "$filepath"
+                    # Log the directory creation
+                    log_file_change "$filepath" "CREATED"
+                fi
+            elif [ -f "$filepath" ]; then
+                # File events - check if file is new or modified
+                local file_exists_in_db=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM file_changes WHERE filepath = '$filepath';" 2>/dev/null || echo "0")
+                if [ "$file_exists_in_db" -eq 0 ]; then
+                    # New file
+                    log_file_change "$filepath" "CREATED"
+                else
+                    # Check if it was recently logged to avoid duplicates
+                    local recent_log=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM file_changes WHERE filepath = '$filepath' AND datetime(timestamp) >= datetime('now', '-2 seconds');" 2>/dev/null || echo "0")
+                    if [ "$recent_log" -eq 0 ]; then
+                        # Modified file
                         log_file_change "$filepath" "MODIFIED"
                     fi
                 fi
             elif [ ! -e "$filepath" ]; then
+                # Deleted file or directory
+                local item_type="FILE"
+                local last_known_type=$(sqlite3 "$DB_FILE" "SELECT file_type FROM file_changes WHERE filepath = '$filepath' ORDER BY timestamp DESC LIMIT 1;" 2>/dev/null || echo "FILE")
+                if [ -n "$last_known_type" ]; then
+                    item_type="$last_known_type"
+                fi
                 log_file_change "$filepath" "DELETED"
             fi
         fi
@@ -268,7 +323,7 @@ parse_event_filter() {
         local sql_filter=""
         IFS='|' read -ra EVENTS <<< "$filter"
         for event in "${EVENTS[@]}"; do
-            event=$(echo "$event" | tr '[:lower:]' '[:upper:]')
+            event=$(echo "$event" | tr '[:lower:]' '[:upper:]' | xargs) # xargs trims whitespace
             if [[ "$event" =~ ^(CREATED|MODIFIED|DELETED)$ ]]; then
                 if [ -n "$sql_filter" ]; then
                     sql_filter="$sql_filter, "
@@ -291,7 +346,7 @@ show_status() {
     
     echo "📊 Folder File Monitor Status"
     if [ -n "$event_filter" ]; then
-        echo "Filter: $event_filter events only"
+        echo "🔍 Filter: $event_filter events only"
     fi
     echo "============================="
     
@@ -299,7 +354,7 @@ show_status() {
         local pid=$(cat "$PID_FILE")
         if ps -p $pid > /dev/null 2>&1; then
             echo "✅ Status: RUNNING (PID: $pid)"
-            echo "Config file: $CONFIG_FILE"
+            echo "📁 Config file: $CONFIG_FILE"
             echo "📄 Log: $LOG_FILE"
             echo "🗄️ Database: $DB_FILE"
             
@@ -324,17 +379,19 @@ show_status() {
                         MAX(timestamp) as last_change,
                         SUM(CASE WHEN event_type = 'CREATED' THEN 1 ELSE 0 END) as created,
                         SUM(CASE WHEN event_type = 'MODIFIED' THEN 1 ELSE 0 END) as modified,
-                        SUM(CASE WHEN event_type = 'DELETED' THEN 1 ELSE 0 END) as deleted
+                        SUM(CASE WHEN event_type = 'DELETED' THEN 1 ELSE 0 END) as deleted,
+                        SUM(CASE WHEN file_type = 'FILE' THEN 1 ELSE 0 END) as files,
+                        SUM(CASE WHEN file_type = 'DIRECTORY' THEN 1 ELSE 0 END) as directories
                     FROM file_changes 
                     WHERE date(timestamp) >= date('now', '-7 days')
                       AND event_type IN $filter_clause;
                 " 2>/dev/null || echo "Database error"
                 
                 echo ""
-                echo "🔥 Most active files (Last 7 days):"
+                echo "🔥 Most active items (Last 7 days):"
                 sqlite3 -header -column "$DB_FILE" "
                     SELECT 
-                        filepath as full_path,
+                        CASE WHEN file_type = 'DIRECTORY' THEN '📁 ' || filepath ELSE '📄 ' || filepath END as item,
                         COUNT(*) as total_changes,
                         MAX(timestamp) as last_change,
                         SUM(CASE WHEN event_type = 'CREATED' THEN 1 ELSE 0 END) as created,
@@ -343,9 +400,9 @@ show_status() {
                     FROM file_changes 
                     WHERE date(timestamp) >= date('now', '-7 days')
                       AND event_type IN $filter_clause
-                    GROUP BY filepath 
+                    GROUP BY filepath, file_type
                     ORDER BY total_changes DESC, last_change DESC
-                    LIMIT 10;
+                    LIMIT 15;
                 " 2>/dev/null || echo "Database error"
                 
                 echo ""
@@ -353,9 +410,10 @@ show_status() {
                 sqlite3 -header -column "$DB_FILE" "
                     SELECT 
                         timestamp as date_time,
-                        filepath as full_path,
+                        CASE WHEN file_type = 'DIRECTORY' THEN '📁 ' || filepath ELSE '📄 ' || filepath END as item,
                         event_type as event,
                         CASE 
+                            WHEN file_type = 'DIRECTORY' THEN 'DIR'
                             WHEN file_size < 1024 THEN file_size || ' B'
                             WHEN file_size < 1048576 THEN ROUND(file_size/1024.0, 1) || ' KB'
                             ELSE ROUND(file_size/1048576.0, 1) || ' MB'
@@ -364,7 +422,7 @@ show_status() {
                     WHERE date(timestamp) >= date('now', '-7 days')
                       AND event_type IN $filter_clause
                     ORDER BY timestamp DESC 
-                    LIMIT 20;
+                    LIMIT 25;
                 " 2>/dev/null || echo "Database error"
             fi
         else
@@ -430,17 +488,18 @@ show_recent() {
     local filter_clause=$(parse_event_filter "$event_filter")
     
     if [ -f "$DB_FILE" ]; then
-        echo "📋 File changes in the last $hours hours:"
+        echo "📋 File and directory changes in the last $hours hours:"
         if [ -n "$event_filter" ]; then
-            echo "Filter: $event_filter events only"
+            echo "🔍 Filter: $event_filter events only"
         fi
         echo "======================================="
         sqlite3 -header -column "$DB_FILE" "
             SELECT 
                 timestamp as date_time,
-                filepath as full_path,
+                CASE WHEN file_type = 'DIRECTORY' THEN '📁 ' || filepath ELSE '📄 ' || filepath END as item,
                 event_type as event,
                 CASE 
+                    WHEN file_type = 'DIRECTORY' THEN 'DIR'
                     WHEN file_size < 1024 THEN file_size || ' B'
                     WHEN file_size < 1048576 THEN ROUND(file_size/1024.0, 1) || ' KB'
                     ELSE ROUND(file_size/1048576.0, 1) || ' MB'
@@ -456,12 +515,14 @@ show_recent() {
         sqlite3 -header -column "$DB_FILE" "
             SELECT 
                 COUNT(*) as total_changes,
-                COUNT(DISTINCT filepath) as unique_files,
+                COUNT(DISTINCT filepath) as unique_items,
                 MIN(timestamp) as first_change,
                 MAX(timestamp) as last_change,
                 SUM(CASE WHEN event_type = 'CREATED' THEN 1 ELSE 0 END) as created,
                 SUM(CASE WHEN event_type = 'MODIFIED' THEN 1 ELSE 0 END) as modified,
-                SUM(CASE WHEN event_type = 'DELETED' THEN 1 ELSE 0 END) as deleted
+                SUM(CASE WHEN event_type = 'DELETED' THEN 1 ELSE 0 END) as deleted,
+                SUM(CASE WHEN file_type = 'FILE' THEN 1 ELSE 0 END) as files,
+                SUM(CASE WHEN file_type = 'DIRECTORY' THEN 1 ELSE 0 END) as directories
             FROM file_changes 
             WHERE datetime(timestamp) >= datetime('now', '-$hours hours')
               AND event_type IN $filter_clause;
@@ -481,6 +542,7 @@ export_data() {
                 filepath,
                 filename,
                 event_type,
+                file_type,
                 file_size,
                 substr(file_hash, 1, 8) as hash_short,
                 session_id
@@ -569,13 +631,14 @@ case "$1" in
         echo ""
         echo "Examples:"
         echo "  $0 status                 - Show all events (last 7 days)"
-        echo "  $0 status modified        - Show only modified files (last 7 days)"
-        echo "  $0 status created|deleted - Show created and deleted files (last 7 days)"
+        echo "  $0 status modified        - Show only modified items (last 7 days)"
+        echo "  $0 status created|deleted - Show created and deleted items (last 7 days)"
         echo "  $0 recent                 - Show all events (last 24 hours)"
         echo "  $0 recent 6               - Show all events (last 6 hours)"
-        echo "  $0 recent 6 created       - Show only created files (last 6 hours)"
+        echo "  $0 recent 6 created       - Show only created items (last 6 hours)"
         echo "  $0 recent 6 modified|deleted - Show modified and deleted (last 6 hours)"
         echo ""
-        echo "💡 Monitor starts automatically on login"
+        echo "💡 Monitor tracks files AND directories with instant updates"
+        echo "📁 Supports nested directory creation and .key files"
         ;;
 esac
