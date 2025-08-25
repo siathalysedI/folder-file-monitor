@@ -5,7 +5,7 @@ Automatic monitoring of **Enhanced Complete Edition** - Now with comprehensive f
 ## 🚀 Enhanced Features
 
 - **Automatic startup** on login with enhanced error recovery
-- **Real-time monitoring** of multiple directories (0.1s latency)
+- **Real-time monitoring** of multiple directories (0.3s latency optimized for long paths)
 - **Complete folder tracking** - detects folder creation, modification, deletion
 - **Nested folder detection** - tracks multi-level folder creation (e.g., `project/slides/assets`)
 - **Enhanced SQLite database** with folder/file indicators and compressed backups
@@ -16,7 +16,10 @@ Automatic monitoring of **Enhanced Complete Edition** - Now with comprehensive f
 - **Detailed statistics** by file/folder type with complete event breakdown
 - **Automatic database backups** - compressed .tar.gz backups during updates
 - **Enhanced CSV export** with folder/file type indicators
-- **Smart real-time detection** - prevents duplicate entries with intelligent timing
+- **Optimized for long paths** - Enhanced handling of deep directory structures and very long file paths
+- **Batch processing** - Uses batch markers to prevent event overflow in complex directory trees
+- **Path length validation** - Handles and logs very long paths (>255 characters) safely
+- **Performance optimized** - Balanced latency (0.3s) for reliable detection in deep structures
 
 ## Installation
 
@@ -362,36 +365,60 @@ total_changes  unique_paths  first_change         last_change          created  
 | **Service** | `~/Library/LaunchAgents/com.user.folder.filemonitor.plist` | Service configuration |
 | **Config** | `~/.folder_monitor_config` | Directory configuration |
 
-## 🧪 Testing Enhanced Folder Tracking with Auto-Migration
+## 🧪 Testing AGGRESSIVE Monitoring - ANY Path Length
 
-### Quick Test After Installation/Update
+### Test Your Exact Problematic Path
 
 ```bash
-# The system automatically migrates your database
-# Test folder creation detection:
-mkdir -p ~/test-enhanced-$(date +%s)/subfolder
-touch ~/test-enhanced-*/subfolder/presentation.key
-touch ~/test-enhanced-*/subfolder/document.txt
+# Test the EXACT path structure that was failing
+mkdir -p ~/test/action/proj/transformation/viva-nl/project/reference/internal/platforms/gral/mgt/checkpoint/$(date +%Y%m%d)/slides/assets/deep/very/deep/nested/folders/structure
 
-# Check results (should show folders and files with [FOLDER]/[FILE] prefixes)
+# Create .key file in the deepest location
+touch ~/test/action/proj/transformation/viva-nl/project/reference/internal/platforms/gral/mgt/checkpoint/*/slides/assets/deep/very/deep/nested/folders/structure/presentation.key
+
+# Add more files at various depths
+touch ~/test/action/proj/transformation/viva-nl/project/reference/internal/platforms/gral/mgt/checkpoint/*/slides/document.txt
+touch ~/test/action/proj/transformation/viva-nl/project/reference/internal/platforms/gral/mgt/checkpoint/*/slides/assets/image.png
+
+# Test detection - should catch EVERYTHING
 ~/Scripts/folder_file_monitor.sh recent 1 created
+
+# Now DELETE the .key file (your original problem)
+rm ~/test/action/proj/transformation/viva-nl/project/reference/internal/platforms/gral/mgt/checkpoint/*/slides/assets/deep/very/deep/nested/folders/structure/presentation.key
+
+# Test deletion detection - MUST show the DELETED event
+~/Scripts/folder_file_monitor.sh recent 1 deleted
 ```
 
-**Expected output after migration:**
+**Expected AGGRESSIVE output:**
 ```
+🚨 EXTREME PATH LENGTH: 187 chars - PROCESSING ANYWAY
+📁 Processing CREATED for path (187 chars): structure
 📋 File and folder changes in the last 1 hours:
 ===============================================
 date_time           path_type                                           event     size
 -------------------  ------------------------------------------------   --------  ------
-2025-08-25 14:32:15  [FOLDER] /Users/dragon/test-enhanced-1756121721          CREATED   folder
-2025-08-25 14:32:15  [FOLDER] /Users/dragon/test-enhanced-1756121721/subfolder CREATED   folder
-2025-08-25 14:32:16  [FILE] /Users/dragon/test-enhanced-1756121721/subfolder/presentation.key CREATED   1.5 KB
-2025-08-25 14:32:16  [FILE] /Users/dragon/test-enhanced-1756121721/subfolder/document.txt     CREATED   245 B
+2025-08-25 14:32:15  [FOLDER] /Users/dragon/test/action/proj/transformation/...  CREATED   folder
+2025-08-25 14:32:15  [FOLDER] .../checkpoint/20250825                           CREATED   folder  
+2025-08-25 14:32:15  [FOLDER] .../slides                                        CREATED   folder
+2025-08-25 14:32:15  [FOLDER] .../slides/assets                                 CREATED   folder
+2025-08-25 14:32:15  [FOLDER] .../deep/very/deep/nested/folders/structure       CREATED   folder
+2025-08-25 14:32:16  [FILE] .../structure/presentation.key                      CREATED   1.5 KB
+2025-08-25 14:32:16  [FILE] .../slides/document.txt                             CREATED   245 B
+2025-08-25 14:32:16  [FILE] .../assets/image.png                                CREATED   12.3 KB
+2025-08-25 14:35:22  [FILE] .../structure/presentation.key                      DELETED   1.5 KB
+```
 
-📊 Summary for last 1 hours:
-total_changes  unique_paths  created  folders  files
--------------  ------------  -------  -------  -----
-4              4             4        2        2
+### Test EXTREME Path Lengths (1000+ characters)
+
+```bash
+# Create an INSANELY long path
+LONG_PATH="~/test/$(printf 'very-long-folder-name-%.0s' {1..20})/$(printf 'another-very-long-name-%.0s' {1..15})/$(printf 'more-long-names-%.0s' {1..10})"
+mkdir -p "$LONG_PATH"
+touch "$LONG_PATH/extreme-test.key"
+
+# Should detect and log with "EXTREME PATH LENGTH" message
+~/Scripts/folder_file_monitor.sh recent 1 created
 ```
 
 ### Test Database Migration Status
@@ -498,31 +525,66 @@ GROUP BY date(timestamp)
 ORDER BY date DESC;"
 ```
 
-## Enhanced Troubleshooting
+## 🚨 AGGRESSIVE Troubleshooting - Zero Tolerance for Missed Events
 
-### Database Migration Issues
+### If ANYTHING is still not detected (should be impossible now)
 
-If you see "Database error" in status:
-
-1. **Check database schema:**
+1. **Check AGGRESSIVE mode is active:**
    ```bash
-   sqlite3 ~/Logs/folder_file_monitor.db "PRAGMA table_info(file_changes);"
-   ```
+   # Look for AGGRESSIVE indicators in logs
+   ~/Scripts/folder_file_monitor.sh logs | grep -E "(AGGRESSIVE|EXTREME|HYBRID|🚨|🕵️)"
    
-   Look for these columns:
-   - `is_directory|INTEGER|0||0`
-   - `parent_directory|TEXT|0||0`
-
-2. **Force migration by restarting:**
-   ```bash
-   ~/Scripts/folder_file_monitor.sh stop
-   ~/Scripts/folder_file_monitor.sh start
+   # Should see messages like:
+   # "AGGRESSIVE monitoring for ALL path lengths activated"
+   # "HYBRID monitoring for deep paths" 
+   # "EXTREME PATH LENGTH: xxx chars - PROCESSING ANYWAY"
    ```
 
-3. **Check migration logs:**
+2. **Verify hybrid monitoring is working:**
    ```bash
-   ~/Scripts/folder_file_monitor.sh logs | grep -i migration
+   # Check if backup verification is running
+   ps aux | grep folder_file_monitor
+   # Should see multiple processes including hybrid monitoring
+   
+   # Check hybrid detection messages
+   ~/Scripts/folder_file_monitor.sh logs | grep "HYBRID DETECTION"
    ```
+
+3. **Force immediate verification:**
+   ```bash
+   # The hybrid monitor scans every 30 seconds, but you can force restart
+   ~/Scripts/folder_file_monitor.sh restart
+   
+   # Wait 35 seconds, then check for any missed files
+   sleep 35
+   ~/Scripts/folder_file_monitor.sh recent 1
+   ```
+
+4. **Test with maximum verbosity:**
+   ```bash
+   # Create test file and monitor logs in real-time
+   mkdir -p ~/test/your/problematic/very/long/path/structure
+   
+   # In one terminal, watch logs
+   tail -f ~/Logs/folder_file_monitor.log
+   
+   # In another terminal, create/delete files
+   touch ~/test/your/problematic/very/long/path/structure/test.key
+   rm ~/test/your/problematic/very/long/path/structure/test.key
+   ```
+
+### AGGRESSIVE Diagnostics
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/your-repo/folder-file-monitor-diagnostics.sh | bash
+```
+
+**Will check:**
+- ✅ AGGRESSIVE mode activation status
+- ✅ Hybrid monitoring process status  
+- ✅ Extreme path handling capabilities
+- ✅ fswatch buffer configuration
+- ✅ Backup verification scanning
 
 ### Monitor doesn't detect folder creation
 
