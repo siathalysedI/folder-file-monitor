@@ -1,29 +1,29 @@
 #!/bin/bash
 
-# Actualización simple para usuarios que ya tienen el monitor corriendo
-# Ejecutar con: bash folder_file_monitor_update.sh
+# Simple update for users who already have the monitor running
+# Run with: bash folder_file_monitor_update.sh
 
-echo "Actualizando Folder File Monitor..."
-echo "=================================="
+echo "Updating Folder File Monitor..."
+echo "==============================="
 
-# Reiniciar con la nueva configuración
+# Restart with new configuration
 ~/Scripts/folder_file_monitor.sh stop
 sleep 2
 
-# Actualizar el script con la nueva versión
+# Update script with new version
 curl -fsSL https://raw.githubusercontent.com/siathalysedI/folder-file-monitor/main/folder_file_monitor.sh -o ~/Scripts/folder_file_monitor.sh
 chmod +x ~/Scripts/folder_file_monitor.sh
 
-# Reiniciar el servicio automático
+# Restart automatic service
 launchctl unload ~/Library/LaunchAgents/com.user.folder.filemonitor.plist
 launchctl load ~/Library/LaunchAgents/com.user.folder.filemonitor.plist
 
-# Verificar que funciona
+# Verify it works
 sleep 3
 ~/Scripts/folder_file_monitor.sh status
 
 echo ""
-echo "ACTUALIZACIÓN COMPLETADA"
-echo "========================"
-echo "El monitor ha sido actualizado y reiniciado"
-echo "Los directorios configurados se mantienen en: ~/.folder_monitor_config"
+echo "UPDATE COMPLETED"
+echo "================"
+echo "Monitor has been updated and restarted"
+echo "Configured directories are maintained in: ~/.folder_monitor_config"
