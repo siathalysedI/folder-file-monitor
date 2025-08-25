@@ -81,7 +81,7 @@ if [ -f ~/Logs/folder_file_monitor.db ]; then
     # Check for compressed backups
     echo ""
     echo "📦 Database backups:"
-    local backup_count=$(find ~/Logs -name "folder_file_monitor_backup_*.tar.gz" 2>/dev/null | wc -l | tr -d ' ')
+    backup_count=$(find ~/Logs -name "folder_file_monitor_backup_*.tar.gz" 2>/dev/null | wc -l | tr -d ' ')
     if [ "$backup_count" -gt 0 ]; then
         echo "✅ Found $backup_count compressed backup(s):"
         find ~/Logs -name "folder_file_monitor_backup_*.tar.gz" -exec ls -lh {} \;
@@ -239,7 +239,7 @@ if [ -f "$CONFIG_FILE" ]; then
                 echo "     Size: $(du -sh "$line" 2>/dev/null | cut -f1 || echo "unknown")"
                 
                 # Check for .key files specifically
-                local key_files=$(find "$line" -name "*.key" -type f 2>/dev/null | wc -l | tr -d ' ')
+                key_files=$(find "$line" -name "*.key" -type f 2>/dev/null | wc -l | tr -d ' ')
                 if [ "$key_files" -gt 0 ]; then
                     echo "     .key files: $key_files found"
                 fi
@@ -460,7 +460,7 @@ if [ -f ~/Scripts/folder_file_monitor.sh ]; then
         fi
         
         # Check if database has folder records
-        local folder_count=$(sqlite3 ~/Logs/folder_file_monitor.db "SELECT COUNT(*) FROM file_changes WHERE is_directory = 1;" 2>/dev/null || echo "0")
+        folder_count=$(sqlite3 ~/Logs/folder_file_monitor.db "SELECT COUNT(*) FROM file_changes WHERE is_directory = 1;" 2>/dev/null || echo "0")
         if [ "$folder_count" -gt 0 ]; then
             echo "✅ Database contains $folder_count folder tracking records"
         else
@@ -503,7 +503,7 @@ fi
 echo ""
 echo "📦 BACKUP VERIFICATION:"
 echo "======================"
-local backup_count=$(find ~/Logs -name "folder_file_monitor_backup_*.tar.gz" 2>/dev/null | wc -l | tr -d ' ')
+backup_count=$(find ~/Logs -name "folder_file_monitor_backup_*.tar.gz" 2>/dev/null | wc -l | tr -d ' ')
 if [ "$backup_count" -gt 0 ]; then
     echo "✅ Found $backup_count compressed database backup(s):"
     find ~/Logs -name "folder_file_monitor_backup_*.tar.gz" -exec ls -lh {} \; | tail -3
