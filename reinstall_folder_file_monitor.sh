@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Script de Reinstalación - Folder File Monitor
-# Ejecutar con: bash reinstall_folder_file_monitor.sh
+# Reinstallation Script - Folder File Monitor
+# Run with: bash reinstall_folder_file_monitor.sh
 
-set -e  # Detener en cualquier error
+set -e  # Stop on any error
 
-echo "Reinstalando Folder File Monitor..."
+echo "Reinstalling Folder File Monitor..."
 echo "==================================="
 
 # Variables
@@ -14,121 +14,121 @@ PLIST_FILE="$HOME/Library/LaunchAgents/com.user.folder.filemonitor.plist"
 GITHUB_SCRIPT_URL="https://raw.githubusercontent.com/siathalysedI/folder-file-monitor/main/folder_file_monitor.sh"
 CONFIG_FILE="$HOME/.folder_monitor_config"
 
-# Verificar argumentos
+# Check arguments
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
-    echo "Uso: $0 [DIRECTORIO_A_MONITOREAR]"
+    echo "Usage: $0 [DIRECTORY_TO_MONITOR]"
     echo ""
-    echo "Opciones:"
-    echo "  DIRECTORIO_A_MONITOREAR   Nuevo directorio a monitorear (opcional)"
-    echo "  --help, -h                Mostrar esta ayuda"
+    echo "Options:"
+    echo "  DIRECTORY_TO_MONITOR   New directory to monitor (optional)"
+    echo "  --help, -h             Show this help"
     echo ""
-    echo "Ejemplos:"
-    echo "  $0 /Users/$(whoami)/Documents/mi-proyecto"
-    echo "  $0 ~/trabajo/documentos"
-    echo "  $0                        # Mantiene configuración actual"
+    echo "Examples:"
+    echo "  $0 /Users/$(whoami)/Documents/my-project"
+    echo "  $0 ~/work/documents"
+    echo "  $0                     # Maintains current configuration"
     exit 0
 fi
 
-# Manejar configuración
+# Handle configuration
 if [ -n "$1" ]; then
-    echo "Actualizando configuración con nuevo directorio: $1"
-    # Expandir ~ si se usa
+    echo "Updating configuration with new directory: $1"
+    # Expand ~ if used
     NEW_DIR="${1/#\~/$HOME}"
     
-    # Verificar que el directorio existe
+    # Verify directory exists
     if [ ! -d "$NEW_DIR" ]; then
-        echo "El directorio no existe: $NEW_DIR"
-        read -p "¿Quieres crearlo? (y/N): " create_dir
+        echo "Directory does not exist: $NEW_DIR"
+        read -p "Do you want to create it? (y/N): " create_dir
         if [[ $create_dir =~ ^[Yy]$ ]]; then
             mkdir -p "$NEW_DIR"
-            echo "Directorio creado: $NEW_DIR"
+            echo "Directory created: $NEW_DIR"
         else
-            echo "ERROR: Directorio requerido no existe"
+            echo "ERROR: Required directory does not exist"
             exit 1
         fi
     fi
     
-    # Actualizar configuración
+    # Update configuration
     echo "$NEW_DIR" > "$CONFIG_FILE"
-    echo "Configuración actualizada con: $NEW_DIR"
+    echo "Configuration updated with: $NEW_DIR"
     echo ""
 else
-    echo "Manteniendo configuración existente"
+    echo "Maintaining existing configuration"
     if [ -f "$CONFIG_FILE" ] && [ -s "$CONFIG_FILE" ]; then
-        echo "Directorios configurados actualmente:"
+        echo "Currently configured directories:"
         cat -n "$CONFIG_FILE"
     else
-        echo "No hay configuración existente."
-        echo "El monitor pedirá directorios al ejecutarse por primera vez."
+        echo "No existing configuration."
+        echo "Monitor will ask for directories when run for the first time."
     fi
     echo ""
 fi
 
-# 1. Verificar instalación actual
-echo "Paso 1: Verificando instalación actual..."
+# 1. Check current installation
+echo "Step 1: Checking current installation..."
 if [ ! -f "$SCRIPT_FILE" ]; then
-    echo "ERROR: Folder File Monitor no está instalado"
-    echo "   Ejecuta primero: install_folder_file_monitor.sh"
+    echo "ERROR: Folder File Monitor is not installed"
+    echo "   Run first: install_folder_file_monitor.sh"
     exit 1
 fi
-echo "   Instalación encontrada"
+echo "   Installation found"
 
-# 2. Detener servicio actual
-echo "Paso 2: Deteniendo servicio actual..."
+# 2. Stop current service
+echo "Step 2: Stopping current service..."
 "$SCRIPT_FILE" stop 2>/dev/null || true
 launchctl unload "$PLIST_FILE" 2>/dev/null || true
 sleep 2
-echo "   Servicio detenido"
+echo "   Service stopped"
 
-# 3. Hacer backup del script actual
-echo "Paso 3: Haciendo backup..."
+# 3. Backup current script
+echo "Step 3: Creating backup..."
 cp "$SCRIPT_FILE" "$SCRIPT_FILE.backup.$(date +%Y%m%d_%H%M%S)"
-echo "   Backup creado"
+echo "   Backup created"
 
-# 4. Descargar nueva versión
-echo "Paso 4: Descargando nueva versión..."
+# 4. Download new version
+echo "Step 4: Downloading new version..."
 if ! curl -fsSL "$GITHUB_SCRIPT_URL" -o "$SCRIPT_FILE"; then
-    echo "ERROR: No se pudo descargar la nueva versión"
-    echo "   Verifica tu conexión a internet y la URL del repositorio"
+    echo "ERROR: Could not download new version"
+    echo "   Check your internet connection and repository URL"
     exit 1
 fi
 chmod +x "$SCRIPT_FILE"
-echo "   Nueva versión instalada"
+echo "   New version installed"
 
-# 5. Reiniciar servicio
-echo "Paso 5: Reiniciando servicio..."
+# 5. Restart service
+echo "Step 5: Restarting service..."
 launchctl load "$PLIST_FILE"
 sleep 3
-echo "   Servicio reiniciado"
+echo "   Service restarted"
 
-# 6. Verificar funcionamiento
-echo "Paso 6: Verificando funcionamiento..."
+# 6. Verify functionality
+echo "Step 6: Verifying functionality..."
 "$SCRIPT_FILE" status
 
 echo ""
-echo "REINSTALACIÓN COMPLETADA"
+echo "REINSTALLATION COMPLETED"
 echo "========================"
 echo ""
-echo "Folder File Monitor reinstalado exitosamente"
-echo "Servicio corriendo automáticamente"
+echo "Folder File Monitor successfully reinstalled"
+echo "Service running automatically"
 echo ""
 if [ -f "$CONFIG_FILE" ] && [ -s "$CONFIG_FILE" ]; then
-    echo "Configuración actual:"
+    echo "Current configuration:"
     cat -n "$CONFIG_FILE"
 else
-    echo "Sin configuración - el monitor pedirá directorios al iniciarse"
+    echo "No configuration - monitor will ask for directories when starting"
 fi
 echo ""
-echo "Archivo de configuración: $CONFIG_FILE"
+echo "Configuration file: $CONFIG_FILE"
 echo ""
-echo "Para probar:"
-echo "   1. Modifica algún archivo en los directorios configurados"
-echo "   2. Espera unos segundos"
-echo "   3. Ejecuta: $SCRIPT_FILE recent"
+echo "To test:"
+echo "   1. Modify some file in the configured directories"
+echo "   2. Wait a few seconds"
+echo "   3. Run: $SCRIPT_FILE recent"
 echo ""
-echo "Comandos útiles:"
-echo "   $SCRIPT_FILE status   - Ver estado"
-echo "   $SCRIPT_FILE recent   - Ver cambios de hoy"
-echo "   $SCRIPT_FILE add      - Agregar más directorios"
-echo "   $SCRIPT_FILE list     - Ver directorios configurados"
-echo "   $SCRIPT_FILE export   - Exportar datos"
+echo "Useful commands:"
+echo "   $SCRIPT_FILE status   - View status"
+echo "   $SCRIPT_FILE recent   - View today's changes"
+echo "   $SCRIPT_FILE add      - Add more directories"
+echo "   $SCRIPT_FILE list     - View configured directories"
+echo "   $SCRIPT_FILE export   - Export data"
