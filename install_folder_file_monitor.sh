@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Instalador Automático - File Monitor for a Folder
+# Instalador Automático - File Monitor for Multiple Folders
 # Ejecutar con: bash install_folder_file_monitor.sh
 
 set -e  # Detener en cualquier error
 
-echo "🚀 Instalando File Monitor for a Folder..."
-echo "=================================="
+echo "Instalando Folder File Monitor..."
+echo "================================="
 
 # Variables de configuración
 SCRIPT_DIR="$HOME/Scripts"
@@ -14,70 +14,114 @@ LOG_DIR="$HOME/Logs"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 SCRIPT_FILE="$SCRIPT_DIR/folder_file_monitor.sh"
 PLIST_FILE="$LAUNCH_AGENTS_DIR/com.user.folder.filemonitor.plist"
+CONFIG_FILE="$HOME/.folder_monitor_config"
 
-# Función para solicitar directorio
-get_watch_directory() {
-    if [ -z "$1" ]; then
-        echo ""
-        echo "📂 ¿Cuál directorio quieres monitorear?"
-        echo "Ejemplo: /Users/$(whoami)/Documents/mi-proyecto"
-        read -p "Ruta completa: " WATCH_DIR
-        
-        if [ -z "$WATCH_DIR" ]; then
-            echo "❌ ERROR: Debes especificar un directorio"
-            exit 1
-        fi
-    else
-        WATCH_DIR="$1"
-    fi
-    
+# Función para agregar directorio a la configuración
+add_directory() {
+    local dir="$1"
     # Expandir ~ si se usa
-    WATCH_DIR="${WATCH_DIR/#\~/$HOME}"
+    dir="${dir/#\~/$HOME}"
     
     # Verificar que el directorio existe
-    if [ ! -d "$WATCH_DIR" ]; then
-        echo "⚠️  El directorio no existe: $WATCH_DIR"
+    if [ ! -d "$dir" ]; then
+        echo "El directorio no existe: $dir"
         read -p "¿Quieres crearlo? (y/N): " create_dir
         if [[ $create_dir =~ ^[Yy]$ ]]; then
-            mkdir -p "$WATCH_DIR"
-            echo "📁 Directorio creado: $WATCH_DIR"
+            mkdir -p "$dir"
+            echo "Directorio creado: $dir"
         else
-            echo "❌ Operación cancelada"
-            exit 1
+            return 1
         fi
     fi
+    
+    # Verificar que no esté ya en la configuración
+    if [ -f "$CONFIG_FILE" ] && grep -Fxq "$dir" "$CONFIG_FILE"; then
+        echo "El directorio ya está configurado: $dir"
+        return 0
+    fi
+    
+    # Agregar a la configuración
+    echo "$dir" >> "$CONFIG_FILE"
+    echo "Directorio agregado: $dir"
+    return 0
 }
 
-# Obtener directorio a monitorear
-get_watch_directory "$1"
+# Función para configurar directorios
+setup_directories() {
+    if [ -n "$1" ]; then
+        # Si se pasó un directorio como parámetro
+        add_directory "$1"
+    else
+        # Solicitar directorios interactivamente
+        echo ""
+        echo "Configuración de directorios a monitorear"
+        echo "Puedes agregar múltiples directorios."
+        echo ""
+        
+        while true; do
+            read -p "Directorio a monitorear (Enter para terminar): " dir
+            if [ -z "$dir" ]; then
+                break
+            fi
+            add_directory "$dir"
+        done
+    fi
+    
+    # Verificar que se configuró al menos uno
+    if [ ! -f "$CONFIG_FILE" ] || [ ! -s "$CONFIG_FILE" ]; then
+        echo "ERROR: Debes configurar al menos un directorio"
+        exit 1
+    fi
+    
+    echo ""
+    echo "Directorios configurados:"
+    cat -n "$CONFIG_FILE"
+}
 
-echo "🎯 Directorio objetivo: $WATCH_DIR"
+# Verificar argumentos de ayuda
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    echo "Uso: $0 [DIRECTORIO]"
+    echo ""
+    echo "Opciones:"
+    echo "  DIRECTORIO   Directorio a monitorear (opcional)"
+    echo "  --help, -h   Mostrar esta ayuda"
+    echo ""
+    echo "Si no especificas directorio, se te pedirá interactivamente"
+    echo "Puedes agregar múltiples directorios durante la instalación"
+    exit 0
+fi
+
+# Configurar directorios
+setup_directories "$1"
+
+echo ""
+echo "Directorio(s) objetivo(s) configurado(s)"
 echo ""
 
 # 1. Verificar e instalar fswatch
-echo "📦 Paso 1: Verificando fswatch..."
+echo "Paso 1: Verificando fswatch..."
 if ! command -v fswatch &> /dev/null; then
     echo "   Instalando fswatch..."
     if ! command -v brew &> /dev/null; then
-        echo "❌ ERROR: Homebrew no está instalado. Instálalo primero:"
+        echo "ERROR: Homebrew no está instalado. Instálalo primero:"
         echo "   /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
         exit 1
     fi
     brew install fswatch
-    echo "   ✅ fswatch instalado"
+    echo "   fswatch instalado"
 else
-    echo "   ✅ fswatch ya está instalado"
+    echo "   fswatch ya está instalado"
 fi
 
 # 2. Crear directorios necesarios
-echo "📁 Paso 2: Creando directorios..."
+echo "Paso 2: Creando directorios..."
 mkdir -p "$SCRIPT_DIR"
 mkdir -p "$LOG_DIR"
 mkdir -p "$LAUNCH_AGENTS_DIR"
-echo "   ✅ Directorios creados"
+echo "   Directorios creados"
 
 # 3. Crear el script principal
-echo "📝 Paso 3: Creando script folder_file_monitor.sh..."
+echo "Paso 3: Creando script folder_file_monitor.sh..."
 cat > "$SCRIPT_FILE" << SCRIPT_EOF
 #!/bin/bash
 
@@ -413,10 +457,10 @@ esac
 SCRIPT_EOF
 
 chmod +x "$SCRIPT_FILE"
-echo "   ✅ Script folder_file_monitor.sh creado"
+echo "   Script folder_file_monitor.sh creado"
 
 # 4. Crear el LaunchAgent
-echo "⚙️  Paso 4: Creando LaunchAgent..."
+echo "Paso 4: Creando LaunchAgent..."
 cat > "$PLIST_FILE" << PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -469,54 +513,51 @@ cat > "$PLIST_FILE" << PLIST_EOF
 </plist>
 PLIST_EOF
 
-echo "   ✅ LaunchAgent creado"
+echo "   LaunchAgent creado"
 
-# 5. Verificar directorio objetivo
-echo "📂 Paso 5: Verificando directorio objetivo..."
-if [ ! -d "$WATCH_DIR" ]; then
-    echo "   ⚠️  Directorio no existe. Creando: $WATCH_DIR"
-    mkdir -p "$WATCH_DIR"
-fi
-echo "   ✅ Directorio verificado"
-
-# 6. Cargar y activar el servicio
-echo "🔄 Paso 6: Activando servicio..."
+# 5. Cargar y activar el servicio
+echo "Paso 5: Activando servicio..."
 
 # Descargar si ya existe
 launchctl unload "$PLIST_FILE" 2>/dev/null || true
 
 # Cargar el nuevo servicio
 launchctl load "$PLIST_FILE"
-echo "   ✅ Servicio cargado"
+echo "   Servicio cargado"
 
 # Esperar un momento para que inicie
 sleep 3
 
-# 7. Verificar que funciona
-echo "✅ Paso 7: Verificando instalación..."
+# 6. Verificar que funciona
+echo "Paso 6: Verificando instalación..."
 "$SCRIPT_FILE" status
 
 echo ""
-echo "🎉 INSTALACIÓN COMPLETADA"
-echo "========================="
+echo "INSTALACIÓN COMPLETADA"
+echo "======================"
 echo ""
-echo "✅ El Folder File Monitor está instalado y corriendo"
-echo "✅ Se iniciará automáticamente cada vez que enciendas tu Mac"
-echo "✅ Monitorea: $WATCH_DIR"
+echo "El Folder File Monitor está instalado y corriendo"
+echo "Se iniciará automáticamente cada vez que enciendas tu Mac"
 echo ""
-echo "📋 Comandos principales:"
+echo "Configuración guardada en: $CONFIG_FILE"
+echo ""
+echo "Comandos principales:"
 echo "   $SCRIPT_FILE status   - Ver estado"
 echo "   $SCRIPT_FILE recent   - Ver cambios de hoy"
+echo "   $SCRIPT_FILE add      - Agregar más directorios"
+echo "   $SCRIPT_FILE list     - Ver directorios configurados"
 echo "   $SCRIPT_FILE export   - Exportar datos"
 echo ""
-echo "📄 Archivos importantes:"
+echo "Archivos importantes:"
 echo "   Script: $SCRIPT_FILE"
+echo "   Config: $CONFIG_FILE"
 echo "   Log: $LOG_DIR/folder_file_monitor.log"
 echo "   Base datos: $LOG_DIR/folder_file_monitor.db"
 echo ""
-echo "🔧 Para desinstalar:"
+echo "Para desinstalar:"
 echo "   launchctl unload $PLIST_FILE"
 echo "   rm -f $PLIST_FILE"
 echo "   rm -f $SCRIPT_FILE"
+echo "   rm -f $CONFIG_FILE"
 echo ""
-echo "¡Listo! Tu sistema monitorea automáticamente todos los cambios."
+echo "Tu sistema ahora monitorea automáticamente todos los cambios."
