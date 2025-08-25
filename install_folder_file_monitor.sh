@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# Instalador Automático - File Monitor for Multiple Folders
-# Ejecutar con: bash install_folder_file_monitor.sh
+# Automatic Installer - File Monitor for Multiple Folders
+# Run with: bash install_folder_file_monitor.sh
 
-set -e  # Detener en cualquier error
+set -e  # Stop on any error
 
-echo "Instalando Folder File Monitor..."
+echo "Installing Folder File Monitor..."
 echo "================================="
 
-# Variables de configuración
+# Configuration variables
 SCRIPT_DIR="$HOME/Scripts"
 LOG_DIR="$HOME/Logs"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
@@ -16,50 +16,50 @@ SCRIPT_FILE="$SCRIPT_DIR/folder_file_monitor.sh"
 PLIST_FILE="$LAUNCH_AGENTS_DIR/com.user.folder.filemonitor.plist"
 CONFIG_FILE="$HOME/.folder_monitor_config"
 
-# Función para agregar directorio a la configuración
+# Function to add directory to configuration
 add_directory() {
     local dir="$1"
-    # Expandir ~ si se usa
+    # Expand ~ if used
     dir="${dir/#\~/$HOME}"
     
-    # Verificar que el directorio existe
+    # Verify directory exists
     if [ ! -d "$dir" ]; then
-        echo "El directorio no existe: $dir"
-        read -p "¿Quieres crearlo? (y/N): " create_dir
+        echo "Directory does not exist: $dir"
+        read -p "Do you want to create it? (y/N): " create_dir
         if [[ $create_dir =~ ^[Yy]$ ]]; then
             mkdir -p "$dir"
-            echo "Directorio creado: $dir"
+            echo "Directory created: $dir"
         else
             return 1
         fi
     fi
     
-    # Verificar que no esté ya en la configuración
+    # Verify it's not already in configuration
     if [ -f "$CONFIG_FILE" ] && grep -Fxq "$dir" "$CONFIG_FILE"; then
-        echo "El directorio ya está configurado: $dir"
+        echo "Directory is already configured: $dir"
         return 0
     fi
     
-    # Agregar a la configuración
+    # Add to configuration
     echo "$dir" >> "$CONFIG_FILE"
-    echo "Directorio agregado: $dir"
+    echo "Directory added: $dir"
     return 0
 }
 
-# Función para configurar directorios
+# Function to configure directories
 setup_directories() {
     if [ -n "$1" ]; then
-        # Si se pasó un directorio como parámetro
+        # If a directory was passed as parameter
         add_directory "$1"
     else
-        # Solicitar directorios interactivamente
+        # Request directories interactively
         echo ""
-        echo "Configuración de directorios a monitorear"
-        echo "Puedes agregar múltiples directorios."
+        echo "Directory configuration to monitor"
+        echo "You can add multiple directories."
         echo ""
         
         while true; do
-            read -p "Directorio a monitorear (Enter para terminar): " dir
+            read -p "Directory to monitor (Enter to finish): " dir
             if [ -z "$dir" ]; then
                 break
             fi
@@ -67,82 +67,157 @@ setup_directories() {
         done
     fi
     
-    # Verificar que se configuró al menos uno
+    # Verify at least one was configured
     if [ ! -f "$CONFIG_FILE" ] || [ ! -s "$CONFIG_FILE" ]; then
-        echo "ERROR: Debes configurar al menos un directorio"
+        echo "ERROR: You must configure at least one directory"
         exit 1
     fi
     
     echo ""
-    echo "Directorios configurados:"
+    echo "Configured directories:"
     cat -n "$CONFIG_FILE"
 }
 
-# Verificar argumentos de ayuda
+# Check help arguments
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
-    echo "Uso: $0 [DIRECTORIO]"
+    echo "Usage: $0 [DIRECTORY]"
     echo ""
-    echo "Opciones:"
-    echo "  DIRECTORIO   Directorio a monitorear (opcional)"
-    echo "  --help, -h   Mostrar esta ayuda"
+    echo "Options:"
+    echo "  DIRECTORY   Directory to monitor (optional)"
+    echo "  --help, -h  Show this help"
     echo ""
-    echo "Si no especificas directorio, se te pedirá interactivamente"
-    echo "Puedes agregar múltiples directorios durante la instalación"
+    echo "If you don't specify directory, you'll be asked interactively"
+    echo "You can add multiple directories during installation"
     exit 0
 fi
 
-# Configurar directorios
+# Configure directories
 setup_directories "$1"
 
 echo ""
-echo "Directorio(s) objetivo(s) configurado(s)"
+echo "Target directory(s) configured"
 echo ""
 
-# 1. Verificar e instalar fswatch
-echo "Paso 1: Verificando fswatch..."
+# 1. Verify and install fswatch
+echo "Step 1: Checking fswatch..."
 if ! command -v fswatch &> /dev/null; then
-    echo "   Instalando fswatch..."
+    echo "   Installing fswatch..."
     if ! command -v brew &> /dev/null; then
-        echo "ERROR: Homebrew no está instalado. Instálalo primero:"
+        echo "ERROR: Homebrew is not installed. Install it first:"
         echo "   /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
         exit 1
     fi
     brew install fswatch
-    echo "   fswatch instalado"
+    echo "   fswatch installed"
 else
-    echo "   fswatch ya está instalado"
+    echo "   fswatch is already installed"
 fi
 
-# 2. Crear directorios necesarios
-echo "Paso 2: Creando directorios..."
+# 2. Create necessary directories
+echo "Step 2: Creating directories..."
 mkdir -p "$SCRIPT_DIR"
 mkdir -p "$LOG_DIR"
 mkdir -p "$LAUNCH_AGENTS_DIR"
-echo "   Directorios creados"
+echo "   Directories created"
 
-# 3. Crear el script principal
-echo "Paso 3: Creando script folder_file_monitor.sh..."
+# 3. Create main script
+echo "Step 3: Creating folder_file_monitor.sh script..."
 cat > "$SCRIPT_FILE" << SCRIPT_EOF
 #!/bin/bash
 
-# Folder File Monitor Daemon - VERSIÓN DEFINITIVA
-# Monitoreo automático de archivos de cualquier folder
+# Folder File Monitor Daemon - DEFINITIVE VERSION
+# Automatic file monitoring for any folder
 
-# Configuración - NOMBRES CONSISTENTES
-WATCH_DIR="$WATCH_DIR"
+# Configuration - CONSISTENT NAMES
+CONFIG_FILE="\$HOME/.folder_monitor_config"
 LOG_FILE="\$HOME/Logs/folder_file_monitor.log"
 DB_FILE="\$HOME/Logs/folder_file_monitor.db"
 PID_FILE="\$HOME/Logs/folder_file_monitor.pid"
 
-# Crear directorios si no existen
+# Function to read directories from config file
+read_config() {
+    if [ -f "\$CONFIG_FILE" ]; then
+        WATCH_DIRS=()
+        while IFS= read -r line; do
+            if [ -n "\$line" ] && [ "\${line:0:1}" != "#" ]; then
+                WATCH_DIRS+=("\$line")
+            fi
+        done < "\$CONFIG_FILE"
+    else
+        WATCH_DIRS=()
+    fi
+}
+
+# Function to add directory to configuration
+add_directory() {
+    local dir="\$1"
+    # Expand ~ if used
+    dir="\${dir/#\\~/\$HOME}"
+    
+    # Verify directory exists
+    if [ ! -d "\$dir" ]; then
+        echo "Directory does not exist: \$dir"
+        read -p "Do you want to create it? (y/N): " create_dir
+        if [[ \$create_dir =~ ^[Yy]\$ ]]; then
+            mkdir -p "\$dir"
+            echo "Directory created: \$dir"
+        else
+            return 1
+        fi
+    fi
+    
+    # Verify it's not already in configuration
+    if [ -f "\$CONFIG_FILE" ] && grep -Fxq "\$dir" "\$CONFIG_FILE"; then
+        echo "Directory is already being monitored: \$dir"
+        return 0
+    fi
+    
+    # Add to configuration
+    echo "\$dir" >> "\$CONFIG_FILE"
+    echo "Directory added to monitoring: \$dir"
+    return 0
+}
+
+# Function to request directories if no configuration
+setup_directories() {
+    echo ""
+    echo "No directories configured for monitoring."
+    echo "You can add multiple directories."
+    echo ""
+    
+    while true; do
+        read -p "Directory to monitor (Enter to finish): " dir
+        if [ -z "\$dir" ]; then
+            break
+        fi
+        add_directory "\$dir"
+    done
+    
+    # Verify at least one was added
+    if [ ! -f "\$CONFIG_FILE" ] || [ ! -s "\$CONFIG_FILE" ]; then
+        echo "ERROR: You must configure at least one directory"
+        exit 1
+    fi
+}
+
+# Read existing configuration
+read_config
+
+# If no directories configured, request them
+if [ \${#WATCH_DIRS[@]} -eq 0 ]; then
+    setup_directories
+    read_config
+fi
+
+# Create directories if they don't exist
 mkdir -p "\$HOME/Logs"
 
-# Función de logging con timestamp
+# Logging function with timestamp
 log_message() {
     echo "[\$(date '+%Y-%m-%d %H:%M:%S')] \$1" | tee -a "\$LOG_FILE"
 }
 
-# Inicializar base de datos SQLite
+# Initialize SQLite database
 init_database() {
     sqlite3 "\$DB_FILE" <<EOF
 CREATE TABLE IF NOT EXISTS file_changes (
@@ -170,15 +245,15 @@ CREATE INDEX IF NOT EXISTS idx_session ON file_changes(session_id);
 EOF
 }
 
-# Session ID único
+# Unique session ID
 SESSION_ID="session_\$(date +%Y%m%d_%H%M%S)_\$\$"
 COMPUTER_NAME=\$(scutil --get ComputerName 2>/dev/null || echo "Unknown")
 
-# Función de cleanup al cerrar
+# Cleanup function on close
 cleanup() {
-    log_message "🛑 Deteniendo Folder File Monitor (Session: \$SESSION_ID)"
+    log_message "Stopping Folder File Monitor (Session: \$SESSION_ID)"
     
-    # Actualizar sesión en DB
+    # Update session in DB
     sqlite3 "\$DB_FILE" <<EOF
 UPDATE monitor_sessions 
 SET end_time = '\$(date '+%Y-%m-%d %H:%M:%S')',
@@ -190,12 +265,12 @@ EOF
     exit 0
 }
 
-# Verificar si ya está corriendo
+# Check if already running
 check_running() {
     if [ -f "\$PID_FILE" ]; then
         local pid=\$(cat "\$PID_FILE")
         if ps -p \$pid > /dev/null 2>&1; then
-            log_message "⚠️  Folder File Monitor ya está corriendo (PID: \$pid)"
+            log_message "⚠️ Folder File Monitor is already running (PID: \$pid)"
             exit 1
         else
             rm -f "\$PID_FILE"
@@ -203,7 +278,7 @@ check_running() {
     fi
 }
 
-# Registrar cambio de archivo
+# Log file change
 log_file_change() {
     local filepath="\$1"
     local event="\$2"
@@ -217,170 +292,208 @@ log_file_change() {
         hash=\$(shasum -a 256 "\$filepath" 2>/dev/null | cut -d' ' -f1 || echo "error")
     fi
     
-    # Log compacto
-    log_message "📄 \$event: \$filename (\$size bytes)"
+    # Compact log
+    log_message "\$event: \$filename (\$size bytes)"
     
-    # Insertar en base de datos
+    # Insert into database
     sqlite3 "\$DB_FILE" <<EOF
 INSERT INTO file_changes (timestamp, filepath, filename, event_type, file_size, file_hash, session_id)
 VALUES ('\$timestamp', '\$filepath', '\$filename', '\$event', \$size, '\$hash', '\$SESSION_ID');
 EOF
 }
 
-# Función principal del daemon
+# Main daemon function
 start_daemon() {
     check_running
     echo \$\$ > "\$PID_FILE"
     
-    # Configurar señales para cleanup
+    # Configure signals for cleanup
     trap cleanup SIGTERM SIGINT SIGQUIT EXIT
     
-    # Inicializar
+    # Initialize
     init_database
-    log_message "🚀 Iniciando Folder File Monitor (Session: \$SESSION_ID)"
-    log_message "📂 Directorio: \$WATCH_DIR"
-    log_message "💻 Equipo: \$COMPUTER_NAME"
+    log_message "Starting Folder File Monitor (Session: \$SESSION_ID)"
+    log_message "Computer: \$COMPUTER_NAME"
     
-    # Registrar nueva sesión
+    # Register new session
     sqlite3 "\$DB_FILE" <<EOF
 INSERT INTO monitor_sessions (session_id, start_time, computer_name)
 VALUES ('\$SESSION_ID', '\$(date '+%Y-%m-%d %H:%M:%S')', '\$COMPUTER_NAME');
 EOF
     
-    # Verificaciones previas
+    # Pre-checks
     if ! command -v fswatch &> /dev/null; then
-        log_message "❌ ERROR: fswatch no instalado"
+        log_message "❌ ERROR: fswatch not installed"
         exit 1
     fi
     
-    if [ ! -d "\$WATCH_DIR" ]; then
-        log_message "⚠️  Directorio no existe: \$WATCH_DIR"
-        log_message "📁 Creando directorio..."
-        mkdir -p "\$WATCH_DIR"
-    fi
+    # Verify all directories exist
+    for dir in "\${WATCH_DIRS[@]}"; do
+        if [ ! -d "\$dir" ]; then
+            log_message "Directory does not exist: \$dir"
+            log_message "Creating directory..."
+            mkdir -p "\$dir"
+        fi
+        log_message "📂 Directory: \$dir"
+    done
     
-    log_message "✅ Folder File Monitor iniciado correctamente (PID: \$\$)"
+    log_message "✅ Folder File Monitor started successfully (PID: \$\$)"
     
-    # Monitoreo principal - TODOS los archivos excepto exclusiones específicas
+    # Main monitoring - ALL files except specific exclusions
+    # Use all configured directories
     fswatch -r \\
         --event Created \\
         --event Updated \\
         --event Removed \\
         --exclude='.git' \\
         --exclude='.DS_Store' \\
-        --exclude='~$' \\
-        --exclude='\\.swp$' \\
-        --exclude='\\.tmp$' \\
-        --exclude='\\.temp$' \\
-        "\$WATCH_DIR" | while read filepath
+        --exclude='~\$' \\
+        --exclude='\\.swp\$' \\
+        --exclude='\\.tmp\$' \\
+        --exclude='\\.temp\$' \\
+        "\${WATCH_DIRS[@]}" | while read filepath
     do
-        # Excluir archivos temporales y de sistema
+        # Exclude temporary and system files
         if [[ ! "\$filepath" =~ /\\.git/|\\.DS_Store|~\\\$|\\.swp\$|\\.tmp\$|\\.temp\$ ]]; then
             if [ -f "\$filepath" ]; then
-                log_file_change "\$filepath" "MODIFICADO"
+                log_file_change "\$filepath" "MODIFIED"
             elif [ ! -e "\$filepath" ]; then
-                log_file_change "\$filepath" "ELIMINADO"
+                log_file_change "\$filepath" "DELETED"
             fi
         fi
     done
 }
 
-# Mostrar estado del servicio
+# Show service status
 show_status() {
-    echo "📊 Estado del Folder File Monitor"
-    echo "================================="
+    echo "📊 Folder File Monitor Status"
+    echo "============================="
     
     if [ -f "\$PID_FILE" ]; then
         local pid=\$(cat "\$PID_FILE")
         if ps -p \$pid > /dev/null 2>&1; then
-            echo "✅ Estado: CORRIENDO (PID: \$pid)"
-            echo "📂 Directorio: \$WATCH_DIR"
+            echo "✅ Status: RUNNING (PID: \$pid)"
+            echo "Config file: \$CONFIG_FILE"
             echo "📄 Log: \$LOG_FILE"
-            echo "🗄️  Base datos: \$DB_FILE"
+            echo "🗄️ Database: \$DB_FILE"
+            
+            if [ -f "\$CONFIG_FILE" ]; then
+                echo ""
+                echo "Monitored directories:"
+                while IFS= read -r line; do
+                    if [ -n "\$line" ] && [ "\${line:0:1}" != "#" ]; then
+                        echo "  - \$line"
+                    fi
+                done < "\$CONFIG_FILE"
+            fi
             
             if [ -f "\$DB_FILE" ]; then
                 echo ""
-                echo "📈 Estadísticas de HOY:"
+                echo "📈 TODAY's Statistics:"
                 sqlite3 -header -column "\$DB_FILE" "
                     SELECT 
-                        COUNT(*) as cambios_hoy,
-                        COUNT(DISTINCT filename) as archivos_únicos,
-                        MAX(timestamp) as último_cambio
+                        COUNT(*) as changes_today,
+                        COUNT(DISTINCT filename) as unique_files,
+                        MAX(timestamp) as last_change
                     FROM file_changes 
                     WHERE date(timestamp) = date('now');
                 "
                 
                 echo ""
-                echo "🔥 Archivos más modificados (últimos 7 días):"
+                echo "🔥 Most modified files (last 7 days):"
                 sqlite3 -header -column "\$DB_FILE" "
                     SELECT 
                         filename,
-                        COUNT(*) as modificaciones
+                        COUNT(*) as modifications
                     FROM file_changes 
                     WHERE date(timestamp) >= date('now', '-7 days')
                     GROUP BY filename 
-                    ORDER BY modificaciones DESC 
+                    ORDER BY modifications DESC 
                     LIMIT 5;
                 "
             fi
         else
-            echo "❌ Estado: DETENIDO (PID file obsoleto)"
+            echo "❌ Status: STOPPED (obsolete PID file)"
             rm -f "\$PID_FILE"
         fi
     else
-        echo "❌ Estado: DETENIDO"
+        echo "❌ Status: STOPPED"
     fi
 }
 
-# Detener el servicio
+# Function to add more directories
+add_directory_interactive() {
+    echo "Add directory to monitoring"
+    echo "=========================="
+    read -p "Directory path: " dir
+    if [ -n "\$dir" ]; then
+        if add_directory "\$dir"; then
+            echo "Directory added. Restart monitor for it to take effect:"
+            echo "  \$0 restart"
+        fi
+    fi
+}
+
+# Function to list configured directories
+list_directories() {
+    echo "Directories configured for monitoring:"
+    echo "===================================="
+    if [ -f "\$CONFIG_FILE" ]; then
+        cat -n "\$CONFIG_FILE"
+    else
+        echo "No directories configured"
+    fi
+}
+
+# Stop service
 stop_daemon() {
     if [ -f "\$PID_FILE" ]; then
         local pid=\$(cat "\$PID_FILE")
         if ps -p \$pid > /dev/null 2>&1; then
-            log_message "🛑 Deteniendo Folder File Monitor (PID: \$pid)"
+            log_message "🛑 Stopping Folder File Monitor (PID: \$pid)"
             kill \$pid
             sleep 3
             if ps -p \$pid > /dev/null 2>&1; then
                 kill -9 \$pid
-                log_message "🔪 Detención forzada"
+                log_message "🔪 Forced stop"
             fi
             rm -f "\$PID_FILE"
-            echo "✅ Folder File Monitor detenido"
+            echo "✅ Folder File Monitor stopped"
         else
-            echo "⚠️  Folder File Monitor no estaba corriendo"
+            echo "⚠️ Folder File Monitor was not running"
             rm -f "\$PID_FILE"
         fi
     else
-        echo "⚠️  Folder File Monitor no está corriendo"
+        echo "⚠️ Folder File Monitor is not running"
     fi
 }
 
-# Mostrar historial reciente
+# Show recent history
 show_recent() {
     if [ -f "\$DB_FILE" ]; then
-        echo "📋 Últimos 15 cambios:"
-        echo "====================="
+        echo "📋 Last 15 changes:"
+        echo "=================="
         sqlite3 -header -column "\$DB_FILE" "
             SELECT 
-                substr(timestamp, 12, 8) as hora,
+                substr(timestamp, 12, 8) as time,
                 filename,
-                event_type as evento,
+                event_type as event,
                 CASE 
                     WHEN file_size < 1024 THEN file_size || ' B'
                     WHEN file_size < 1048576 THEN ROUND(file_size/1024.0, 1) || ' KB'
                     ELSE ROUND(file_size/1048576.0, 1) || ' MB'
-                END as tamaño
+                END as size
             FROM file_changes 
             WHERE date(timestamp) = date('now')
             ORDER BY timestamp DESC 
             LIMIT 15;
         "
     else
-        echo "❌ No hay base de datos disponible"
+        echo "❌ No database available"
     fi
 }
 
-# Exportar datos
+# Export data
 export_data() {
     local export_file="folder_file_changes_\$(date +%Y%m%d_%H%M%S).csv"
     if [ -f "\$DB_FILE" ]; then
@@ -395,21 +508,21 @@ export_data() {
             FROM file_changes 
             ORDER BY timestamp DESC;
         " > "\$export_file"
-        echo "📊 Datos exportados a: \$export_file"
-        echo "📁 Ubicación: \$(pwd)/\$export_file"
+        echo "📊 Data exported to: \$export_file"
+        echo "📍 Location: \$(pwd)/\$export_file"
     else
-        echo "❌ No hay base de datos para exportar"
+        echo "❌ No database to export"
     fi
 }
 
-# Main - Manejo de comandos
+# Main - Command handling
 case "\$1" in
     "daemon")
         start_daemon
         ;;
     "start")
         start_daemon &
-        echo "🚀 Folder File Monitor iniciado en background"
+        echo "🚀 Folder File Monitor started in background"
         sleep 2
         show_status
         ;;
@@ -425,42 +538,50 @@ case "\$1" in
     "export")
         export_data
         ;;
+    "add")
+        add_directory_interactive
+        ;;
+    "list")
+        list_directories
+        ;;
     "restart")
         stop_daemon
         sleep 2
         start_daemon &
-        echo "🔄 Folder File Monitor reiniciado"
+        echo "🔄 Folder File Monitor restarted"
         ;;
     "logs")
         if [ -f "\$LOG_FILE" ]; then
-            echo "📄 Últimas 50 líneas del log:"
+            echo "📄 Last 50 log lines:"
             tail -50 "\$LOG_FILE"
         else
-            echo "❌ No hay archivo de log"
+            echo "❌ No log file"
         fi
         ;;
     *)
-        echo "🛠️  Folder File Monitor - Comandos disponibles:"
-        echo "==============================================="
-        echo "  daemon   - Ejecutar como daemon (uso interno)"
-        echo "  start    - Iniciar monitor en background"
-        echo "  stop     - Detener monitor"
-        echo "  status   - Ver estado y estadísticas"
-        echo "  recent   - Mostrar cambios de hoy"
-        echo "  export   - Exportar datos a CSV"
-        echo "  restart  - Reiniciar monitor"
-        echo "  logs     - Ver últimas líneas del log"
+        echo "🛠️ Folder File Monitor - Available commands:"
+        echo "============================================"
+        echo "  daemon   - Run as daemon (internal use)"
+        echo "  start    - Start monitor in background"
+        echo "  stop     - Stop monitor"
+        echo "  status   - View status and statistics"
+        echo "  recent   - Show today's changes"
+        echo "  export   - Export data to CSV"
+        echo "  add      - Add directory to monitoring"
+        echo "  list     - List configured directories"
+        echo "  restart  - Restart monitor"
+        echo "  logs     - View latest log lines"
         echo ""
-        echo "💡 El monitor se inicia automáticamente al login"
+        echo "💡 Monitor starts automatically on login"
         ;;
 esac
 SCRIPT_EOF
 
 chmod +x "$SCRIPT_FILE"
-echo "   Script folder_file_monitor.sh creado"
+echo "   Script folder_file_monitor.sh created"
 
-# 4. Crear el LaunchAgent
-echo "Paso 4: Creando LaunchAgent..."
+# 4. Create LaunchAgent
+echo "Step 4: Creating LaunchAgent..."
 cat > "$PLIST_FILE" << PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -513,51 +634,51 @@ cat > "$PLIST_FILE" << PLIST_EOF
 </plist>
 PLIST_EOF
 
-echo "   LaunchAgent creado"
+echo "   LaunchAgent created"
 
-# 5. Cargar y activar el servicio
-echo "Paso 5: Activando servicio..."
+# 5. Load and activate service
+echo "Step 5: Activating service..."
 
-# Descargar si ya existe
+# Unload if already exists
 launchctl unload "$PLIST_FILE" 2>/dev/null || true
 
-# Cargar el nuevo servicio
+# Load new service
 launchctl load "$PLIST_FILE"
-echo "   Servicio cargado"
+echo "   Service loaded"
 
-# Esperar un momento para que inicie
+# Wait a moment for it to start
 sleep 3
 
-# 6. Verificar que funciona
-echo "Paso 6: Verificando instalación..."
+# 6. Verify it works
+echo "Step 6: Verifying installation..."
 "$SCRIPT_FILE" status
 
 echo ""
-echo "INSTALACIÓN COMPLETADA"
+echo "INSTALLATION COMPLETED"
 echo "======================"
 echo ""
-echo "El Folder File Monitor está instalado y corriendo"
-echo "Se iniciará automáticamente cada vez que enciendas tu Mac"
+echo "Folder File Monitor is installed and running"
+echo "It will start automatically every time you turn on your Mac"
 echo ""
-echo "Configuración guardada en: $CONFIG_FILE"
+echo "Configuration saved in: $CONFIG_FILE"
 echo ""
-echo "Comandos principales:"
-echo "   $SCRIPT_FILE status   - Ver estado"
-echo "   $SCRIPT_FILE recent   - Ver cambios de hoy"
-echo "   $SCRIPT_FILE add      - Agregar más directorios"
-echo "   $SCRIPT_FILE list     - Ver directorios configurados"
-echo "   $SCRIPT_FILE export   - Exportar datos"
+echo "Main commands:"
+echo "   $SCRIPT_FILE status   - View status"
+echo "   $SCRIPT_FILE recent   - View today's changes"
+echo "   $SCRIPT_FILE add      - Add more directories"
+echo "   $SCRIPT_FILE list     - View configured directories"
+echo "   $SCRIPT_FILE export   - Export data"
 echo ""
-echo "Archivos importantes:"
+echo "Important files:"
 echo "   Script: $SCRIPT_FILE"
 echo "   Config: $CONFIG_FILE"
 echo "   Log: $LOG_DIR/folder_file_monitor.log"
-echo "   Base datos: $LOG_DIR/folder_file_monitor.db"
+echo "   Database: $LOG_DIR/folder_file_monitor.db"
 echo ""
-echo "Para desinstalar:"
+echo "To uninstall:"
 echo "   launchctl unload $PLIST_FILE"
 echo "   rm -f $PLIST_FILE"
 echo "   rm -f $SCRIPT_FILE"
 echo "   rm -f $CONFIG_FILE"
 echo ""
-echo "Tu sistema ahora monitorea automáticamente todos los cambios."
+echo "Your system now automatically monitors all changes."
