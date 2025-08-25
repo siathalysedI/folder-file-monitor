@@ -454,15 +454,44 @@ EOF
         --exclude='/\.git/' \
         "${WATCH_DIRS[@]}" 2>/dev/null | while read filepath
     do
-        # Skip only .DS_Store and .git internals - include everything else including .key files
-        if [[ ! "$filepath" =~ \.DS_Store$|/\.git/ ]]; then
-            # Determine the actual event type based on current state
+        # Skip batch markers and empty lines
+        [ "$filepath" = "NoOp" ] || [ -z "$filepath" ] && continue
+        
+        # NO PATH LENGTH LIMITS - process EVERYTHING
+        local path_length=${#filepath}
+        if [ "$path_length" -gt 500 ]; then
+            log_message "🚨 EXTREME PATH LENGTH: ${path_length} chars - PROCESSING ANYWAY"
+        fi
+        
+        # Skip only system files - EVERYTHING ELSE gets processed
+        if [[ "$filepath" =~ \.DS_Store$|/\.git/|\.swp$|\.tmp$ ]]; then
+            continue
+        fi
+        
+        # VERY AGGRESSIVE duplicate detection - 2 second window only
+        local very_recent=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM file_changes WHERE filepath = '$filepath' AND datetime(timestamp) >= datetime('now', '-2 seconds');" 2>/dev/null || echo "0")
+        
+        if [ "$very_recent" -eq 0 ]; then
+            # Determine event type
             if [ -e "$filepath" ]; then
-                # Path exists - could be created or modified
-                # Check if this file/folder was just created by looking for very recent records
-                local very_recent=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM file_changes WHERE filepath = '$filepath' AND datetime(timestamp) >= datetime('now', '-1 seconds');" 2>/dev/null || echo "0")
+                local historical_count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM file_changes WHERE filepath = '$filepath';" 2>/dev/null || echo "0")
                 
-                if [ "$very_recent" -eq 0 ]; then
+                if [ "$historical_count" -eq 0 ]; then
+                    # Never seen before - it's created
+                    if [ -d "$filepath" ]; then
+                        handle_nested_folders "$filepath" "CREATED"
+                    else
+                        log_file_change "$filepath" "CREATED"
+                    fi
+                else
+                    # Existed before - it's modified
+                    log_file_change "$filepath" "MODIFIED"
+                fi
+            else
+                # Path doesn't exist - it was deleted
+                log_file_change "$filepath" "DELETED"
+            fi
+        fi
                     # Check if we have any historical record of this path
                     local historical_count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM file_changes WHERE filepath = '$filepath';" 2>/dev/null || echo "0")
                     
