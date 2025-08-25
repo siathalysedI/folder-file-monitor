@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# Folder File Monitor Daemon - VERSIÓN DEFINITIVA
-# Monitoreo automático de archivos de cualquier folder
+# Folder File Monitor Daemon - DEFINITIVE VERSION
+# Automatic file monitoring for any folder
 
-# Configuración - NOMBRES CONSISTENTES
+# Configuration - CONSISTENT NAMES
 CONFIG_FILE="$HOME/.folder_monitor_config"
 LOG_FILE="$HOME/Logs/folder_file_monitor.log"
 DB_FILE="$HOME/Logs/folder_file_monitor.db"
 PID_FILE="$HOME/Logs/folder_file_monitor.pid"
 
-# Función para leer directorios del archivo de configuración
+# Function to read directories from config file
 read_config() {
     if [ -f "$CONFIG_FILE" ]; then
         WATCH_DIRS=()
@@ -23,83 +23,76 @@ read_config() {
     fi
 }
 
-# Función para agregar directorio a la configuración
+# Function to add directory to configuration
 add_directory() {
     local dir="$1"
-    # Expandir ~ si se usa
+    # Expand ~ if used
     dir="${dir/#\~/$HOME}"
     
-    # Verificar que el directorio existe
+    # Verify directory exists
     if [ ! -d "$dir" ]; then
-        echo "El directorio no existe: $dir"
-        read -p "¿Quieres crearlo? (y/N): " create_dir
+        echo "Directory does not exist: $dir"
+        read -p "Do you want to create it? (y/N): " create_dir
         if [[ $create_dir =~ ^[Yy]$ ]]; then
             mkdir -p "$dir"
-            echo "Directorio creado: $dir"
+            echo "Directory created: $dir"
         else
             return 1
         fi
     fi
     
-    # Verificar que no esté ya en la configuración
+    # Verify it's not already in configuration
     if [ -f "$CONFIG_FILE" ] && grep -Fxq "$dir" "$CONFIG_FILE"; then
-        echo "El directorio ya está siendo monitoreado: $dir"
+        echo "Directory is already being monitored: $dir"
         return 0
     fi
     
-    # Agregar a la configuración
+    # Add to configuration
     echo "$dir" >> "$CONFIG_FILE"
-    echo "Directorio agregado al monitoreo: $dir"
+    echo "Directory added to monitoring: $dir"
     return 0
 }
 
-# Función para solicitar directorios si no hay configuración
+# Function to request directories if no configuration
 setup_directories() {
     echo ""
-    echo "No hay directorios configurados para monitorear."
-    echo "Puedes agregar múltiples directorios."
+    echo "No directories configured for monitoring."
+    echo "You can add multiple directories."
     echo ""
     
     while true; do
-        read -p "Directorio a monitorear (Enter para terminar): " dir
+        read -p "Directory to monitor (Enter to finish): " dir
         if [ -z "$dir" ]; then
             break
         fi
         add_directory "$dir"
     done
     
-    # Verificar que se agregó al menos uno
+    # Verify at least one was added
     if [ ! -f "$CONFIG_FILE" ] || [ ! -s "$CONFIG_FILE" ]; then
-        echo "ERROR: Debes configurar al menos un directorio"
+        echo "ERROR: You must configure at least one directory"
         exit 1
     fi
 }
 
-# Leer configuración existente
+# Read existing configuration
 read_config
 
-# Si no hay directorios configurados, solicitar
+# If no directories configured, request them
 if [ ${#WATCH_DIRS[@]} -eq 0 ]; then
     setup_directories
     read_config
-fi [ "{FOLDER}" = "{FOLDER}" ]; then
-    get_watch_directory
-else
-    WATCH_DIR="{FOLDER}"
 fi
-LOG_FILE="$HOME/Logs/folder_file_monitor.log"
-DB_FILE="$HOME/Logs/folder_file_monitor.db"
-PID_FILE="$HOME/Logs/folder_file_monitor.pid"
 
-# Crear directorios si no existen
+# Create directories if they don't exist
 mkdir -p "$HOME/Logs"
 
-# Función de logging con timestamp
+# Logging function with timestamp
 log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# Inicializar base de datos SQLite
+# Initialize SQLite database
 init_database() {
     sqlite3 "$DB_FILE" <<EOF
 CREATE TABLE IF NOT EXISTS file_changes (
@@ -127,15 +120,15 @@ CREATE INDEX IF NOT EXISTS idx_session ON file_changes(session_id);
 EOF
 }
 
-# Session ID único
+# Unique session ID
 SESSION_ID="session_$(date +%Y%m%d_%H%M%S)_$$"
 COMPUTER_NAME=$(scutil --get ComputerName 2>/dev/null || echo "Unknown")
 
-# Función de cleanup al cerrar
+# Cleanup function on close
 cleanup() {
-    log_message "Deteniendo Folder File Monitor (Session: $SESSION_ID)"
+    log_message "Stopping Folder File Monitor (Session: $SESSION_ID)"
     
-    # Actualizar sesión en DB
+    # Update session in DB
     sqlite3 "$DB_FILE" <<EOF
 UPDATE monitor_sessions 
 SET end_time = '$(date '+%Y-%m-%d %H:%M:%S')',
@@ -147,12 +140,12 @@ EOF
     exit 0
 }
 
-# Verificar si ya está corriendo
+# Check if already running
 check_running() {
     if [ -f "$PID_FILE" ]; then
         local pid=$(cat "$PID_FILE")
         if ps -p $pid > /dev/null 2>&1; then
-            log_message "⚠️  Folder File Monitor ya está corriendo (PID: $pid)"
+            log_message "⚠️ Folder File Monitor is already running (PID: $pid)"
             exit 1
         else
             rm -f "$PID_FILE"
@@ -160,7 +153,7 @@ check_running() {
     fi
 }
 
-# Registrar cambio de archivo
+# Log file change
 log_file_change() {
     local filepath="$1"
     local event="$2"
@@ -174,90 +167,94 @@ log_file_change() {
         hash=$(shasum -a 256 "$filepath" 2>/dev/null | cut -d' ' -f1 || echo "error")
     fi
     
-    # Log compacto
+    # Compact log
     log_message "$event: $filename ($size bytes)"
     
-    # Insertar en base de datos
+    # Insert into database
     sqlite3 "$DB_FILE" <<EOF
 INSERT INTO file_changes (timestamp, filepath, filename, event_type, file_size, file_hash, session_id)
 VALUES ('$timestamp', '$filepath', '$filename', '$event', $size, '$hash', '$SESSION_ID');
 EOF
 }
 
-# Función principal del daemon
+# Main daemon function
 start_daemon() {
     check_running
     echo $$ > "$PID_FILE"
     
-    # Configurar señales para cleanup
+    # Configure signals for cleanup
     trap cleanup SIGTERM SIGINT SIGQUIT EXIT
     
-    # Inicializar
+    # Initialize
     init_database
-    log_message "Iniciando Folder File Monitor (Session: $SESSION_ID)"
-    log_message "📂 Directorio: $WATCH_DIR"
-    log_message "💻 Equipo: $COMPUTER_NAME"
+    log_message "Starting Folder File Monitor (Session: $SESSION_ID)"
+    log_message "💻 Computer: $COMPUTER_NAME"
     
-    # Registrar nueva sesión
+    # Register new session
     sqlite3 "$DB_FILE" <<EOF
 INSERT INTO monitor_sessions (session_id, start_time, computer_name)
 VALUES ('$SESSION_ID', '$(date '+%Y-%m-%d %H:%M:%S')', '$COMPUTER_NAME');
 EOF
     
-    # Verificaciones previas
+    # Pre-checks
     if ! command -v fswatch &> /dev/null; then
-        log_message "❌ ERROR: fswatch no instalado"
+        log_message "❌ ERROR: fswatch not installed"
         exit 1
     fi
     
-    # Verificar que todos los directorios existen
+    # Verify all directories exist
     for dir in "${WATCH_DIRS[@]}"; do
         if [ ! -d "$dir" ]; then
-            log_message "Directorio no existe: $dir"
-            log_message "Creando directorio..."
+            log_message "Directory does not exist: $dir"
+            log_message "📁 Creating directory..."
             mkdir -p "$dir"
         fi
+        log_message "📂 Directory: $dir"
     done
     
-    log_message "Folder File Monitor iniciado correctamente (PID: $)"
+    log_message "✅ Folder File Monitor started successfully (PID: $$)"
     
-    # Monitoreo principal - TODOS los archivos excepto exclusiones específicas
-    # Usar todos los directorios configurados
+    # Main monitoring - ALL files except specific exclusions
+    # Use all configured directories
     fswatch -r \
         --event Created \
         --event Updated \
         --event Removed \
         --exclude='.git' \
         --exclude='.DS_Store' \
-        --exclude='~
+        --exclude='~$' \
+        --exclude='\.swp$' \
+        --exclude='\.tmp$' \
+        --exclude='\.temp$' \
+        "${WATCH_DIRS[@]}" | while read filepath
     do
-        # Excluir archivos temporales y de sistema
+        # Exclude temporary and system files
         if [[ ! "$filepath" =~ /\.git/|\.DS_Store|~\$|\.swp$|\.tmp$|\.temp$ ]]; then
             if [ -f "$filepath" ]; then
-                log_file_change "$filepath" "MODIFICADO"
+                log_file_change "$filepath" "MODIFIED"
             elif [ ! -e "$filepath" ]; then
-                log_file_change "$filepath" "ELIMINADO"
+                log_file_change "$filepath" "DELETED"
             fi
         fi
     done
 }
 
-# Mostrar estado del servicio
+# Show service status
 show_status() {
-    echo "📊 Estado del Folder File Monitor"
-    echo "================================="
+    echo "📊 Folder File Monitor Status"
+    echo "============================="
     
     if [ -f "$PID_FILE" ]; then
         local pid=$(cat "$PID_FILE")
         if ps -p $pid > /dev/null 2>&1; then
-            echo "Estado: CORRIENDO (PID: $pid)"
-            echo "Archivo config: $CONFIG_FILE"
-            echo "Log: $LOG_FILE"
-            echo "Base datos: $DB_FILE"
+            echo "✅ Status: RUNNING (PID: $pid)"
+            echo "Config file: $CONFIG_FILE"
+            echo "📄 Log: $LOG_FILE"
+            echo "🗄️ Database: $DB_FILE"
             
             if [ -f "$CONFIG_FILE" ]; then
                 echo ""
-                echo "Directorios monitoreados:"
+                echo "Monitored directories:"
                 while IFS= read -r line; do
                     if [ -n "$line" ] && [ "${line:0:1}" != "#" ]; then
                         echo "  - $line"
@@ -267,111 +264,111 @@ show_status() {
             
             if [ -f "$DB_FILE" ]; then
                 echo ""
-                echo "Estadísticas de HOY:"
+                echo "📈 TODAY's Statistics:"
                 sqlite3 -header -column "$DB_FILE" "
                     SELECT 
-                        COUNT(*) as cambios_hoy,
-                        COUNT(DISTINCT filename) as archivos_únicos,
-                        MAX(timestamp) as último_cambio
+                        COUNT(*) as changes_today,
+                        COUNT(DISTINCT filename) as unique_files,
+                        MAX(timestamp) as last_change
                     FROM file_changes 
                     WHERE date(timestamp) = date('now');
                 "
                 
                 echo ""
-                echo "Archivos más modificados (últimos 7 días):"
+                echo "🔥 Most modified files (last 7 days):"
                 sqlite3 -header -column "$DB_FILE" "
                     SELECT 
                         filename,
-                        COUNT(*) as modificaciones
+                        COUNT(*) as modifications
                     FROM file_changes 
                     WHERE date(timestamp) >= date('now', '-7 days')
                     GROUP BY filename 
-                    ORDER BY modificaciones DESC 
+                    ORDER BY modifications DESC 
                     LIMIT 5;
                 "
             fi
         else
-            echo "Estado: DETENIDO (PID file obsoleto)"
+            echo "❌ Status: STOPPED (obsolete PID file)"
             rm -f "$PID_FILE"
         fi
     else
-        echo "Estado: DETENIDO"
+        echo "❌ Status: STOPPED"
     fi
 }
 
-# Función para agregar más directorios
+# Function to add more directories
 add_directory_interactive() {
-    echo "Agregar directorio al monitoreo"
-    echo "=============================="
-    read -p "Ruta del directorio: " dir
+    echo "Add directory to monitoring"
+    echo "=========================="
+    read -p "Directory path: " dir
     if [ -n "$dir" ]; then
         if add_directory "$dir"; then
-            echo "Directorio agregado. Reinicia el monitor para que tome efecto:"
+            echo "Directory added. Restart monitor for it to take effect:"
             echo "  $0 restart"
         fi
     fi
 }
 
-# Función para listar directorios configurados
+# Function to list configured directories
 list_directories() {
-    echo "Directorios configurados para monitoreo:"
-    echo "========================================"
+    echo "Directories configured for monitoring:"
+    echo "===================================="
     if [ -f "$CONFIG_FILE" ]; then
         cat -n "$CONFIG_FILE"
     else
-        echo "No hay directorios configurados"
+        echo "No directories configured"
     fi
 }
 
-# Detener el servicio
+# Stop service
 stop_daemon() {
     if [ -f "$PID_FILE" ]; then
         local pid=$(cat "$PID_FILE")
         if ps -p $pid > /dev/null 2>&1; then
-            log_message "Deteniendo Folder File Monitor (PID: $pid)"
+            log_message "🛑 Stopping Folder File Monitor (PID: $pid)"
             kill $pid
             sleep 3
             if ps -p $pid > /dev/null 2>&1; then
                 kill -9 $pid
-                log_message "Detención forzada"
+                log_message "🔪 Forced stop"
             fi
             rm -f "$PID_FILE"
-            echo "Folder File Monitor detenido"
+            echo "✅ Folder File Monitor stopped"
         else
-            echo "Folder File Monitor no estaba corriendo"
+            echo "⚠️ Folder File Monitor was not running"
             rm -f "$PID_FILE"
         fi
     else
-        echo "Folder File Monitor no está corriendo"
+        echo "⚠️ Folder File Monitor is not running"
     fi
 }
 
-# Mostrar historial reciente
+# Show recent history
 show_recent() {
     if [ -f "$DB_FILE" ]; then
-        echo "Últimos 15 cambios:"
-        echo "==================="
+        echo "📋 Last 15 changes:"
+        echo "=================="
         sqlite3 -header -column "$DB_FILE" "
             SELECT 
-                substr(timestamp, 12, 8) as hora,
+                substr(timestamp, 12, 8) as time,
                 filename,
-                event_type as evento,
+                event_type as event,
                 CASE 
                     WHEN file_size < 1024 THEN file_size || ' B'
                     WHEN file_size < 1048576 THEN ROUND(file_size/1024.0, 1) || ' KB'
                     ELSE ROUND(file_size/1048576.0, 1) || ' MB'
-                END as tamaño
+                END as size
             FROM file_changes 
             WHERE date(timestamp) = date('now')
             ORDER BY timestamp DESC 
             LIMIT 15;
         "
     else
-        echo "No hay base de datos disponible"
+        echo "❌ No database available"
     fi
 }
 
-# Exportar datos
+# Export data
 export_data() {
     local export_file="folder_file_changes_$(date +%Y%m%d_%H%M%S).csv"
     if [ -f "$DB_FILE" ]; then
@@ -386,21 +383,21 @@ export_data() {
             FROM file_changes 
             ORDER BY timestamp DESC;
         " > "$export_file"
-        echo "Datos exportados a: $export_file"
-        echo "Ubicación: $(pwd)/$export_file"
+        echo "📊 Data exported to: $export_file"
+        echo "📍 Location: $(pwd)/$export_file"
     else
-        echo "No hay base de datos para exportar"
+        echo "❌ No database to export"
     fi
 }
 
-# Main - Manejo de comandos
+# Main - Command handling
 case "$1" in
     "daemon")
         start_daemon
         ;;
     "start")
         start_daemon &
-        echo "Folder File Monitor iniciado en background"
+        echo "🚀 Folder File Monitor started in background"
         sleep 2
         show_status
         ;;
@@ -426,758 +423,30 @@ case "$1" in
         stop_daemon
         sleep 2
         start_daemon &
-        echo "Folder File Monitor reiniciado"
+        echo "🔄 Folder File Monitor restarted"
         ;;
     "logs")
         if [ -f "$LOG_FILE" ]; then
-            echo "Últimas 50 líneas del log:"
+            echo "📄 Last 50 log lines:"
             tail -50 "$LOG_FILE"
         else
-            echo "No hay archivo de log"
+            echo "❌ No log file"
         fi
         ;;
     *)
-        echo "Folder File Monitor - Comandos disponibles:"
-        echo "=========================================="
-        echo "  daemon   - Ejecutar como daemon (uso interno)"
-        echo "  start    - Iniciar monitor en background"
-        echo "  stop     - Detener monitor"
-        echo "  status   - Ver estado y estadísticas"
-        echo "  recent   - Mostrar cambios de hoy"
-        echo "  export   - Exportar datos a CSV"
-        echo "  add      - Agregar directorio al monitoreo"
-        echo "  list     - Listar directorios configurados"
-        echo "  restart  - Reiniciar monitor"
-        echo "  logs     - Ver últimas líneas del log"
+        echo "🛠️ Folder File Monitor - Available commands:"
+        echo "============================================"
+        echo "  daemon   - Run as daemon (internal use)"
+        echo "  start    - Start monitor in background"
+        echo "  stop     - Stop monitor"
+        echo "  status   - View status and statistics"
+        echo "  recent   - Show today's changes"
+        echo "  export   - Export data to CSV"
+        echo "  add      - Add directory to monitoring"
+        echo "  list     - List configured directories"
+        echo "  restart  - Restart monitor"
+        echo "  logs     - View latest log lines"
         echo ""
-        echo "El monitor se inicia automáticamente al login"
-        ;;
-esac \
-        --exclude='\.swp
-    do
-        # Excluir archivos temporales y de sistema
-        if [[ ! "$filepath" =~ /\.git/|\.DS_Store|~\$|\.swp$|\.tmp$|\.temp$ ]]; then
-            if [ -f "$filepath" ]; then
-                log_file_change "$filepath" "MODIFICADO"
-            elif [ ! -e "$filepath" ]; then
-                log_file_change "$filepath" "ELIMINADO"
-            fi
-        fi
-    done
-}
-
-# Mostrar estado del servicio
-show_status() {
-    echo "📊 Estado del Folder File Monitor"
-    echo "================================="
-    
-    if [ -f "$PID_FILE" ]; then
-        local pid=$(cat "$PID_FILE")
-        if ps -p $pid > /dev/null 2>&1; then
-            echo "✅ Estado: CORRIENDO (PID: $pid)"
-            echo "📂 Directorio: $WATCH_DIR"
-            echo "📄 Log: $LOG_FILE"
-            echo "🗄️  Base datos: $DB_FILE"
-            
-            if [ -f "$DB_FILE" ]; then
-                echo ""
-                echo "📈 Estadísticas de HOY:"
-                sqlite3 -header -column "$DB_FILE" "
-                    SELECT 
-                        COUNT(*) as cambios_hoy,
-                        COUNT(DISTINCT filename) as archivos_únicos,
-                        MAX(timestamp) as último_cambio
-                    FROM file_changes 
-                    WHERE date(timestamp) = date('now');
-                "
-                
-                echo ""
-                echo "🔥 Archivos más modificados (últimos 7 días):"
-                sqlite3 -header -column "$DB_FILE" "
-                    SELECT 
-                        filename,
-                        COUNT(*) as modificaciones
-                    FROM file_changes 
-                    WHERE date(timestamp) >= date('now', '-7 days')
-                    GROUP BY filename 
-                    ORDER BY modificaciones DESC 
-                    LIMIT 5;
-                "
-            fi
-        else
-            echo "❌ Estado: DETENIDO (PID file obsoleto)"
-            rm -f "$PID_FILE"
-        fi
-    else
-        echo "❌ Estado: DETENIDO"
-    fi
-}
-
-# Detener el servicio
-stop_daemon() {
-    if [ -f "$PID_FILE" ]; then
-        local pid=$(cat "$PID_FILE")
-        if ps -p $pid > /dev/null 2>&1; then
-            log_message "🛑 Deteniendo Folder File Monitor (PID: $pid)"
-            kill $pid
-            sleep 3
-            if ps -p $pid > /dev/null 2>&1; then
-                kill -9 $pid
-                log_message "🔪 Detención forzada"
-            fi
-            rm -f "$PID_FILE"
-            echo "✅ Folder File Monitor detenido"
-        else
-            echo "⚠️  Folder File Monitor no estaba corriendo"
-            rm -f "$PID_FILE"
-        fi
-    else
-        echo "⚠️  Folder File Monitor no está corriendo"
-    fi
-}
-
-# Mostrar historial reciente
-show_recent() {
-    if [ -f "$DB_FILE" ]; then
-        echo "📋 Últimos 15 cambios:"
-        echo "====================="
-        sqlite3 -header -column "$DB_FILE" "
-            SELECT 
-                substr(timestamp, 12, 8) as hora,
-                filename,
-                event_type as evento,
-                CASE 
-                    WHEN file_size < 1024 THEN file_size || ' B'
-                    WHEN file_size < 1048576 THEN ROUND(file_size/1024.0, 1) || ' KB'
-                    ELSE ROUND(file_size/1048576.0, 1) || ' MB'
-                END as tamaño
-            FROM file_changes 
-            WHERE date(timestamp) = date('now')
-            ORDER BY timestamp DESC 
-            LIMIT 15;
-        "
-    else
-        echo "❌ No hay base de datos disponible"
-    fi
-}
-
-# Exportar datos
-export_data() {
-    local export_file="folder_file_changes_$(date +%Y%m%d_%H%M%S).csv"
-    if [ -f "$DB_FILE" ]; then
-        sqlite3 -header -csv "$DB_FILE" "
-            SELECT 
-                timestamp,
-                filename,
-                event_type,
-                file_size,
-                substr(file_hash, 1, 8) as hash_short,
-                session_id
-            FROM file_changes 
-            ORDER BY timestamp DESC;
-        " > "$export_file"
-        echo "📊 Datos exportados a: $export_file"
-        echo "📁 Ubicación: $(pwd)/$export_file"
-    else
-        echo "❌ No hay base de datos para exportar"
-    fi
-}
-
-# Main - Manejo de comandos
-case "$1" in
-    "daemon")
-        start_daemon
-        ;;
-    "start")
-        start_daemon &
-        echo "🚀 Folder File Monitor iniciado en background"
-        sleep 2
-        show_status
-        ;;
-    "stop")
-        stop_daemon
-        ;;
-    "status")
-        show_status
-        ;;
-    "recent")
-        show_recent
-        ;;
-    "export")
-        export_data
-        ;;
-    "restart")
-        stop_daemon
-        sleep 2
-        start_daemon &
-        echo "🔄 Folder File Monitor reiniciado"
-        ;;
-    "logs")
-        if [ -f "$LOG_FILE" ]; then
-            echo "📄 Últimas 50 líneas del log:"
-            tail -50 "$LOG_FILE"
-        else
-            echo "❌ No hay archivo de log"
-        fi
-        ;;
-    *)
-        echo "🛠️  Folder File Monitor - Comandos disponibles:"
-        echo "==============================================="
-        echo "  daemon   - Ejecutar como daemon (uso interno)"
-        echo "  start    - Iniciar monitor en background"
-        echo "  stop     - Detener monitor"
-        echo "  status   - Ver estado y estadísticas"
-        echo "  recent   - Mostrar cambios de hoy"
-        echo "  export   - Exportar datos a CSV"
-        echo "  restart  - Reiniciar monitor"
-        echo "  logs     - Ver últimas líneas del log"
-        echo ""
-        echo "💡 El monitor se inicia automáticamente al login"
-        ;;
-esac \
-        --exclude='\.tmp
-    do
-        # Excluir archivos temporales y de sistema
-        if [[ ! "$filepath" =~ /\.git/|\.DS_Store|~\$|\.swp$|\.tmp$|\.temp$ ]]; then
-            if [ -f "$filepath" ]; then
-                log_file_change "$filepath" "MODIFICADO"
-            elif [ ! -e "$filepath" ]; then
-                log_file_change "$filepath" "ELIMINADO"
-            fi
-        fi
-    done
-}
-
-# Mostrar estado del servicio
-show_status() {
-    echo "📊 Estado del Folder File Monitor"
-    echo "================================="
-    
-    if [ -f "$PID_FILE" ]; then
-        local pid=$(cat "$PID_FILE")
-        if ps -p $pid > /dev/null 2>&1; then
-            echo "✅ Estado: CORRIENDO (PID: $pid)"
-            echo "📂 Directorio: $WATCH_DIR"
-            echo "📄 Log: $LOG_FILE"
-            echo "🗄️  Base datos: $DB_FILE"
-            
-            if [ -f "$DB_FILE" ]; then
-                echo ""
-                echo "📈 Estadísticas de HOY:"
-                sqlite3 -header -column "$DB_FILE" "
-                    SELECT 
-                        COUNT(*) as cambios_hoy,
-                        COUNT(DISTINCT filename) as archivos_únicos,
-                        MAX(timestamp) as último_cambio
-                    FROM file_changes 
-                    WHERE date(timestamp) = date('now');
-                "
-                
-                echo ""
-                echo "🔥 Archivos más modificados (últimos 7 días):"
-                sqlite3 -header -column "$DB_FILE" "
-                    SELECT 
-                        filename,
-                        COUNT(*) as modificaciones
-                    FROM file_changes 
-                    WHERE date(timestamp) >= date('now', '-7 days')
-                    GROUP BY filename 
-                    ORDER BY modificaciones DESC 
-                    LIMIT 5;
-                "
-            fi
-        else
-            echo "❌ Estado: DETENIDO (PID file obsoleto)"
-            rm -f "$PID_FILE"
-        fi
-    else
-        echo "❌ Estado: DETENIDO"
-    fi
-}
-
-# Detener el servicio
-stop_daemon() {
-    if [ -f "$PID_FILE" ]; then
-        local pid=$(cat "$PID_FILE")
-        if ps -p $pid > /dev/null 2>&1; then
-            log_message "🛑 Deteniendo Folder File Monitor (PID: $pid)"
-            kill $pid
-            sleep 3
-            if ps -p $pid > /dev/null 2>&1; then
-                kill -9 $pid
-                log_message "🔪 Detención forzada"
-            fi
-            rm -f "$PID_FILE"
-            echo "✅ Folder File Monitor detenido"
-        else
-            echo "⚠️  Folder File Monitor no estaba corriendo"
-            rm -f "$PID_FILE"
-        fi
-    else
-        echo "⚠️  Folder File Monitor no está corriendo"
-    fi
-}
-
-# Mostrar historial reciente
-show_recent() {
-    if [ -f "$DB_FILE" ]; then
-        echo "📋 Últimos 15 cambios:"
-        echo "====================="
-        sqlite3 -header -column "$DB_FILE" "
-            SELECT 
-                substr(timestamp, 12, 8) as hora,
-                filename,
-                event_type as evento,
-                CASE 
-                    WHEN file_size < 1024 THEN file_size || ' B'
-                    WHEN file_size < 1048576 THEN ROUND(file_size/1024.0, 1) || ' KB'
-                    ELSE ROUND(file_size/1048576.0, 1) || ' MB'
-                END as tamaño
-            FROM file_changes 
-            WHERE date(timestamp) = date('now')
-            ORDER BY timestamp DESC 
-            LIMIT 15;
-        "
-    else
-        echo "❌ No hay base de datos disponible"
-    fi
-}
-
-# Exportar datos
-export_data() {
-    local export_file="folder_file_changes_$(date +%Y%m%d_%H%M%S).csv"
-    if [ -f "$DB_FILE" ]; then
-        sqlite3 -header -csv "$DB_FILE" "
-            SELECT 
-                timestamp,
-                filename,
-                event_type,
-                file_size,
-                substr(file_hash, 1, 8) as hash_short,
-                session_id
-            FROM file_changes 
-            ORDER BY timestamp DESC;
-        " > "$export_file"
-        echo "📊 Datos exportados a: $export_file"
-        echo "📁 Ubicación: $(pwd)/$export_file"
-    else
-        echo "❌ No hay base de datos para exportar"
-    fi
-}
-
-# Main - Manejo de comandos
-case "$1" in
-    "daemon")
-        start_daemon
-        ;;
-    "start")
-        start_daemon &
-        echo "🚀 Folder File Monitor iniciado en background"
-        sleep 2
-        show_status
-        ;;
-    "stop")
-        stop_daemon
-        ;;
-    "status")
-        show_status
-        ;;
-    "recent")
-        show_recent
-        ;;
-    "export")
-        export_data
-        ;;
-    "restart")
-        stop_daemon
-        sleep 2
-        start_daemon &
-        echo "🔄 Folder File Monitor reiniciado"
-        ;;
-    "logs")
-        if [ -f "$LOG_FILE" ]; then
-            echo "📄 Últimas 50 líneas del log:"
-            tail -50 "$LOG_FILE"
-        else
-            echo "❌ No hay archivo de log"
-        fi
-        ;;
-    *)
-        echo "🛠️  Folder File Monitor - Comandos disponibles:"
-        echo "==============================================="
-        echo "  daemon   - Ejecutar como daemon (uso interno)"
-        echo "  start    - Iniciar monitor en background"
-        echo "  stop     - Detener monitor"
-        echo "  status   - Ver estado y estadísticas"
-        echo "  recent   - Mostrar cambios de hoy"
-        echo "  export   - Exportar datos a CSV"
-        echo "  restart  - Reiniciar monitor"
-        echo "  logs     - Ver últimas líneas del log"
-        echo ""
-        echo "💡 El monitor se inicia automáticamente al login"
-        ;;
-esac \
-        --exclude='\.temp
-    do
-        # Excluir archivos temporales y de sistema
-        if [[ ! "$filepath" =~ /\.git/|\.DS_Store|~\$|\.swp$|\.tmp$|\.temp$ ]]; then
-            if [ -f "$filepath" ]; then
-                log_file_change "$filepath" "MODIFICADO"
-            elif [ ! -e "$filepath" ]; then
-                log_file_change "$filepath" "ELIMINADO"
-            fi
-        fi
-    done
-}
-
-# Mostrar estado del servicio
-show_status() {
-    echo "📊 Estado del Folder File Monitor"
-    echo "================================="
-    
-    if [ -f "$PID_FILE" ]; then
-        local pid=$(cat "$PID_FILE")
-        if ps -p $pid > /dev/null 2>&1; then
-            echo "✅ Estado: CORRIENDO (PID: $pid)"
-            echo "📂 Directorio: $WATCH_DIR"
-            echo "📄 Log: $LOG_FILE"
-            echo "🗄️  Base datos: $DB_FILE"
-            
-            if [ -f "$DB_FILE" ]; then
-                echo ""
-                echo "📈 Estadísticas de HOY:"
-                sqlite3 -header -column "$DB_FILE" "
-                    SELECT 
-                        COUNT(*) as cambios_hoy,
-                        COUNT(DISTINCT filename) as archivos_únicos,
-                        MAX(timestamp) as último_cambio
-                    FROM file_changes 
-                    WHERE date(timestamp) = date('now');
-                "
-                
-                echo ""
-                echo "🔥 Archivos más modificados (últimos 7 días):"
-                sqlite3 -header -column "$DB_FILE" "
-                    SELECT 
-                        filename,
-                        COUNT(*) as modificaciones
-                    FROM file_changes 
-                    WHERE date(timestamp) >= date('now', '-7 days')
-                    GROUP BY filename 
-                    ORDER BY modificaciones DESC 
-                    LIMIT 5;
-                "
-            fi
-        else
-            echo "❌ Estado: DETENIDO (PID file obsoleto)"
-            rm -f "$PID_FILE"
-        fi
-    else
-        echo "❌ Estado: DETENIDO"
-    fi
-}
-
-# Detener el servicio
-stop_daemon() {
-    if [ -f "$PID_FILE" ]; then
-        local pid=$(cat "$PID_FILE")
-        if ps -p $pid > /dev/null 2>&1; then
-            log_message "🛑 Deteniendo Folder File Monitor (PID: $pid)"
-            kill $pid
-            sleep 3
-            if ps -p $pid > /dev/null 2>&1; then
-                kill -9 $pid
-                log_message "🔪 Detención forzada"
-            fi
-            rm -f "$PID_FILE"
-            echo "✅ Folder File Monitor detenido"
-        else
-            echo "⚠️  Folder File Monitor no estaba corriendo"
-            rm -f "$PID_FILE"
-        fi
-    else
-        echo "⚠️  Folder File Monitor no está corriendo"
-    fi
-}
-
-# Mostrar historial reciente
-show_recent() {
-    if [ -f "$DB_FILE" ]; then
-        echo "📋 Últimos 15 cambios:"
-        echo "====================="
-        sqlite3 -header -column "$DB_FILE" "
-            SELECT 
-                substr(timestamp, 12, 8) as hora,
-                filename,
-                event_type as evento,
-                CASE 
-                    WHEN file_size < 1024 THEN file_size || ' B'
-                    WHEN file_size < 1048576 THEN ROUND(file_size/1024.0, 1) || ' KB'
-                    ELSE ROUND(file_size/1048576.0, 1) || ' MB'
-                END as tamaño
-            FROM file_changes 
-            WHERE date(timestamp) = date('now')
-            ORDER BY timestamp DESC 
-            LIMIT 15;
-        "
-    else
-        echo "❌ No hay base de datos disponible"
-    fi
-}
-
-# Exportar datos
-export_data() {
-    local export_file="folder_file_changes_$(date +%Y%m%d_%H%M%S).csv"
-    if [ -f "$DB_FILE" ]; then
-        sqlite3 -header -csv "$DB_FILE" "
-            SELECT 
-                timestamp,
-                filename,
-                event_type,
-                file_size,
-                substr(file_hash, 1, 8) as hash_short,
-                session_id
-            FROM file_changes 
-            ORDER BY timestamp DESC;
-        " > "$export_file"
-        echo "📊 Datos exportados a: $export_file"
-        echo "📁 Ubicación: $(pwd)/$export_file"
-    else
-        echo "❌ No hay base de datos para exportar"
-    fi
-}
-
-# Main - Manejo de comandos
-case "$1" in
-    "daemon")
-        start_daemon
-        ;;
-    "start")
-        start_daemon &
-        echo "🚀 Folder File Monitor iniciado en background"
-        sleep 2
-        show_status
-        ;;
-    "stop")
-        stop_daemon
-        ;;
-    "status")
-        show_status
-        ;;
-    "recent")
-        show_recent
-        ;;
-    "export")
-        export_data
-        ;;
-    "restart")
-        stop_daemon
-        sleep 2
-        start_daemon &
-        echo "🔄 Folder File Monitor reiniciado"
-        ;;
-    "logs")
-        if [ -f "$LOG_FILE" ]; then
-            echo "📄 Últimas 50 líneas del log:"
-            tail -50 "$LOG_FILE"
-        else
-            echo "❌ No hay archivo de log"
-        fi
-        ;;
-    *)
-        echo "🛠️  Folder File Monitor - Comandos disponibles:"
-        echo "==============================================="
-        echo "  daemon   - Ejecutar como daemon (uso interno)"
-        echo "  start    - Iniciar monitor en background"
-        echo "  stop     - Detener monitor"
-        echo "  status   - Ver estado y estadísticas"
-        echo "  recent   - Mostrar cambios de hoy"
-        echo "  export   - Exportar datos a CSV"
-        echo "  restart  - Reiniciar monitor"
-        echo "  logs     - Ver últimas líneas del log"
-        echo ""
-        echo "💡 El monitor se inicia automáticamente al login"
-        ;;
-esac \
-        "${WATCH_DIRS[@]}" | while read filepath
-    do
-        # Excluir archivos temporales y de sistema
-        if [[ ! "$filepath" =~ /\.git/|\.DS_Store|~\$|\.swp$|\.tmp$|\.temp$ ]]; then
-            if [ -f "$filepath" ]; then
-                log_file_change "$filepath" "MODIFICADO"
-            elif [ ! -e "$filepath" ]; then
-                log_file_change "$filepath" "ELIMINADO"
-            fi
-        fi
-    done
-}
-
-# Mostrar estado del servicio
-show_status() {
-    echo "📊 Estado del Folder File Monitor"
-    echo "================================="
-    
-    if [ -f "$PID_FILE" ]; then
-        local pid=$(cat "$PID_FILE")
-        if ps -p $pid > /dev/null 2>&1; then
-            echo "✅ Estado: CORRIENDO (PID: $pid)"
-            echo "📂 Directorio: $WATCH_DIR"
-            echo "📄 Log: $LOG_FILE"
-            echo "🗄️  Base datos: $DB_FILE"
-            
-            if [ -f "$DB_FILE" ]; then
-                echo ""
-                echo "📈 Estadísticas de HOY:"
-                sqlite3 -header -column "$DB_FILE" "
-                    SELECT 
-                        COUNT(*) as cambios_hoy,
-                        COUNT(DISTINCT filename) as archivos_únicos,
-                        MAX(timestamp) as último_cambio
-                    FROM file_changes 
-                    WHERE date(timestamp) = date('now');
-                "
-                
-                echo ""
-                echo "🔥 Archivos más modificados (últimos 7 días):"
-                sqlite3 -header -column "$DB_FILE" "
-                    SELECT 
-                        filename,
-                        COUNT(*) as modificaciones
-                    FROM file_changes 
-                    WHERE date(timestamp) >= date('now', '-7 days')
-                    GROUP BY filename 
-                    ORDER BY modificaciones DESC 
-                    LIMIT 5;
-                "
-            fi
-        else
-            echo "❌ Estado: DETENIDO (PID file obsoleto)"
-            rm -f "$PID_FILE"
-        fi
-    else
-        echo "❌ Estado: DETENIDO"
-    fi
-}
-
-# Detener el servicio
-stop_daemon() {
-    if [ -f "$PID_FILE" ]; then
-        local pid=$(cat "$PID_FILE")
-        if ps -p $pid > /dev/null 2>&1; then
-            log_message "🛑 Deteniendo Folder File Monitor (PID: $pid)"
-            kill $pid
-            sleep 3
-            if ps -p $pid > /dev/null 2>&1; then
-                kill -9 $pid
-                log_message "🔪 Detención forzada"
-            fi
-            rm -f "$PID_FILE"
-            echo "✅ Folder File Monitor detenido"
-        else
-            echo "⚠️  Folder File Monitor no estaba corriendo"
-            rm -f "$PID_FILE"
-        fi
-    else
-        echo "⚠️  Folder File Monitor no está corriendo"
-    fi
-}
-
-# Mostrar historial reciente
-show_recent() {
-    if [ -f "$DB_FILE" ]; then
-        echo "📋 Últimos 15 cambios:"
-        echo "====================="
-        sqlite3 -header -column "$DB_FILE" "
-            SELECT 
-                substr(timestamp, 12, 8) as hora,
-                filename,
-                event_type as evento,
-                CASE 
-                    WHEN file_size < 1024 THEN file_size || ' B'
-                    WHEN file_size < 1048576 THEN ROUND(file_size/1024.0, 1) || ' KB'
-                    ELSE ROUND(file_size/1048576.0, 1) || ' MB'
-                END as tamaño
-            FROM file_changes 
-            WHERE date(timestamp) = date('now')
-            ORDER BY timestamp DESC 
-            LIMIT 15;
-        "
-    else
-        echo "❌ No hay base de datos disponible"
-    fi
-}
-
-# Exportar datos
-export_data() {
-    local export_file="folder_file_changes_$(date +%Y%m%d_%H%M%S).csv"
-    if [ -f "$DB_FILE" ]; then
-        sqlite3 -header -csv "$DB_FILE" "
-            SELECT 
-                timestamp,
-                filename,
-                event_type,
-                file_size,
-                substr(file_hash, 1, 8) as hash_short,
-                session_id
-            FROM file_changes 
-            ORDER BY timestamp DESC;
-        " > "$export_file"
-        echo "📊 Datos exportados a: $export_file"
-        echo "📁 Ubicación: $(pwd)/$export_file"
-    else
-        echo "❌ No hay base de datos para exportar"
-    fi
-}
-
-# Main - Manejo de comandos
-case "$1" in
-    "daemon")
-        start_daemon
-        ;;
-    "start")
-        start_daemon &
-        echo "🚀 Folder File Monitor iniciado en background"
-        sleep 2
-        show_status
-        ;;
-    "stop")
-        stop_daemon
-        ;;
-    "status")
-        show_status
-        ;;
-    "recent")
-        show_recent
-        ;;
-    "export")
-        export_data
-        ;;
-    "restart")
-        stop_daemon
-        sleep 2
-        start_daemon &
-        echo "🔄 Folder File Monitor reiniciado"
-        ;;
-    "logs")
-        if [ -f "$LOG_FILE" ]; then
-            echo "📄 Últimas 50 líneas del log:"
-            tail -50 "$LOG_FILE"
-        else
-            echo "❌ No hay archivo de log"
-        fi
-        ;;
-    *)
-        echo "🛠️  Folder File Monitor - Comandos disponibles:"
-        echo "==============================================="
-        echo "  daemon   - Ejecutar como daemon (uso interno)"
-        echo "  start    - Iniciar monitor en background"
-        echo "  stop     - Detener monitor"
-        echo "  status   - Ver estado y estadísticas"
-        echo "  recent   - Mostrar cambios de hoy"
-        echo "  export   - Exportar datos a CSV"
-        echo "  restart  - Reiniciar monitor"
-        echo "  logs     - Ver últimas líneas del log"
-        echo ""
-        echo "💡 El monitor se inicia automáticamente al login"
+        echo "💡 Monitor starts automatically on login"
         ;;
 esac
