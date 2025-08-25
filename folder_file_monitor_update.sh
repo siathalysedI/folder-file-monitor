@@ -3,8 +3,8 @@
 # Actualización simple para usuarios que ya tienen el monitor corriendo
 # Ejecutar con: bash folder_file_monitor_update.sh
 
-echo "🔄 Actualizando Folder File Monitor..."
-echo "====================================="
+echo "Actualizando Folder File Monitor..."
+echo "=================================="
 
 # Reiniciar con la nueva configuración
 ~/Scripts/folder_file_monitor.sh stop
@@ -23,5 +23,7 @@ sleep 3
 ~/Scripts/folder_file_monitor.sh status
 
 echo ""
-echo "✅ ACTUALIZACIÓN COMPLETADA"
+echo "ACTUALIZACIÓN COMPLETADA"
+echo "========================"
 echo "El monitor ha sido actualizado y reiniciado"
+echo "Los directorios configurados se mantienen en: ~/.folder_monitor_config"
