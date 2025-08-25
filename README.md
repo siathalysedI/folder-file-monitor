@@ -123,20 +123,38 @@ bash folder_file_monitor_update.sh
 
 **Automatically updates to enhanced version with compressed database backup, folder tracking, and real-time detection.**
 
-## Enhanced Reinstallation with Database Backup
+## 🔧 Database Migration (Automatic)
 
-To update to the latest enhanced version and/or change the directory to monitor:
+All enhanced scripts now include **automatic database migration**:
+
+- ✅ **Seamless upgrades** - Existing databases are automatically migrated
+- ✅ **No data loss** - All existing records are preserved  
+- ✅ **Schema enhancement** - Adds `is_directory` and `parent_directory` columns
+- ✅ **Index optimization** - Creates enhanced indexes for better performance
+- ✅ **Backup protection** - Creates backups before any migration
+
+### Migration Details
+
+When you run any enhanced script, it will:
+
+1. **Detect existing database** and check schema version
+2. **Create backup** (compressed .tar.gz format) 
+3. **Add missing columns** (`is_directory`, `parent_directory`)
+4. **Create enhanced indexes** for folder tracking
+5. **Verify migration** success and log results
+
+### Manual Migration Check
 
 ```bash
-# Download enhanced reinstallation script with automatic backup
-curl -fsSL https://raw.githubusercontent.com/your-repo/reinstall_folder_file_monitor.sh -o reinstall_folder_file_monitor.sh
-chmod +x reinstall_folder_file_monitor.sh
+# Check if your database needs migration
+sqlite3 ~/Logs/folder_file_monitor.db "PRAGMA table_info(file_changes);"
 
-# Reinstall with enhanced features and automatic database backup
-./reinstall_folder_file_monitor.sh /new/path/to/monitor
+# Look for these columns:
+# is_directory|INTEGER|0||0
+# parent_directory|TEXT|0||0
 
-# Or run without parameters to maintain current configuration with backup
-./reinstall_folder_file_monitor.sh
+# If missing, run any enhanced script to auto-migrate
+~/Scripts/folder_file_monitor.sh restart
 ```
 
 ## 🎯 Enhanced Usage Commands
@@ -344,31 +362,46 @@ total_changes  unique_paths  first_change         last_change          created  
 | **Service** | `~/Library/LaunchAgents/com.user.folder.filemonitor.plist` | Service configuration |
 | **Config** | `~/.folder_monitor_config` | Directory configuration |
 
-## 🧪 Testing Enhanced Folder Tracking
+## 🧪 Testing Enhanced Folder Tracking with Auto-Migration
 
-### Test Nested Folder Creation
+### Quick Test After Installation/Update
 
 ```bash
-# Create nested folder structure
-mkdir -p ~/test-monitor/project/slides/assets
+# The system automatically migrates your database
+# Test folder creation detection:
+mkdir -p ~/test-enhanced-$(date +%s)/subfolder
+touch ~/test-enhanced-*/subfolder/presentation.key
+touch ~/test-enhanced-*/subfolder/document.txt
 
-# Add files with various extensions including .key
-touch ~/test-monitor/project/slides/presentation.key
-touch ~/test-monitor/project/slides/assets/image.png
-touch ~/test-monitor/project/README.md
-
-# Check results (should show all folders and files as CREATED)
+# Check results (should show folders and files with [FOLDER]/[FILE] prefixes)
 ~/Scripts/folder_file_monitor.sh recent 1 created
 ```
 
-**Expected output:**
+**Expected output after migration:**
 ```
-[FOLDER] /Users/username/test-monitor/project          CREATED
-[FOLDER] /Users/username/test-monitor/project/slides   CREATED  
-[FOLDER] /Users/username/test-monitor/project/slides/assets CREATED
-[FILE] /Users/username/test-monitor/project/slides/presentation.key CREATED
-[FILE] /Users/username/test-monitor/project/slides/assets/image.png CREATED
-[FILE] /Users/username/test-monitor/project/README.md CREATED
+📋 File and folder changes in the last 1 hours:
+===============================================
+date_time           path_type                                           event     size
+-------------------  ------------------------------------------------   --------  ------
+2025-08-25 14:32:15  [FOLDER] /Users/dragon/test-enhanced-1756121721          CREATED   folder
+2025-08-25 14:32:15  [FOLDER] /Users/dragon/test-enhanced-1756121721/subfolder CREATED   folder
+2025-08-25 14:32:16  [FILE] /Users/dragon/test-enhanced-1756121721/subfolder/presentation.key CREATED   1.5 KB
+2025-08-25 14:32:16  [FILE] /Users/dragon/test-enhanced-1756121721/subfolder/document.txt     CREATED   245 B
+
+📊 Summary for last 1 hours:
+total_changes  unique_paths  created  folders  files
+-------------  ------------  -------  -------  -----
+4              4             4        2        2
+```
+
+### Test Database Migration Status
+
+```bash
+# Check if migration was successful
+~/Scripts/folder_file_monitor.sh status
+
+# Should show statistics without "Database error"
+# If you see statistics with folder/file breakdown, migration worked!
 ```
 
 ### Test Enhanced Filtering
@@ -467,44 +500,66 @@ ORDER BY date DESC;"
 
 ## Enhanced Troubleshooting
 
+### Database Migration Issues
+
+If you see "Database error" in status:
+
+1. **Check database schema:**
+   ```bash
+   sqlite3 ~/Logs/folder_file_monitor.db "PRAGMA table_info(file_changes);"
+   ```
+   
+   Look for these columns:
+   - `is_directory|INTEGER|0||0`
+   - `parent_directory|TEXT|0||0`
+
+2. **Force migration by restarting:**
+   ```bash
+   ~/Scripts/folder_file_monitor.sh stop
+   ~/Scripts/folder_file_monitor.sh start
+   ```
+
+3. **Check migration logs:**
+   ```bash
+   ~/Scripts/folder_file_monitor.sh logs | grep -i migration
+   ```
+
 ### Monitor doesn't detect folder creation
 
-1. **Check enhanced status with folder/file breakdown:**
+1. **Verify enhanced features are active:**
    ```bash
-   ~/Scripts/folder_file_monitor.sh status
+   # Check for folder tracking capability
+   grep -E "(handle_nested_folders|is_directory)" ~/Scripts/folder_file_monitor.sh
+   
+   # Should return multiple matches if enhanced version is installed
    ```
 
-2. **Check enhanced logs for folder events:**
-   ```bash
-   ~/Scripts/folder_file_monitor.sh logs | grep -E "\[FOLDER\]|\[FILE\]"
-   ```
-
-3. **Test folder creation manually:**
+2. **Test with simple folder creation:**
    ```bash
    mkdir ~/test-folder-$(date +%s)
    ~/Scripts/folder_file_monitor.sh recent 1 created
    ```
 
-4. **Restart enhanced service:**
+3. **Check database has folder tracking:**
    ```bash
-   ~/Scripts/folder_file_monitor.sh restart
+   sqlite3 ~/Logs/folder_file_monitor.db "SELECT COUNT(*) FROM file_changes WHERE is_directory = 1;"
    ```
 
 ### Enhanced Diagnostics Script
 
-Run the enhanced diagnostics script to troubleshoot folder tracking issues:
+Run the enhanced diagnostics script to troubleshoot migration and folder tracking:
 
 ```bash
-bash folder-file-monitor-diagnostics.sh
+curl -fsSL https://raw.githubusercontent.com/your-repo/folder-file-monitor-diagnostics.sh | bash
 ```
 
 This will check:
-- Enhanced folder tracking capabilities
-- Nested folder detection functions
-- .key file inclusion verification  
-- Real-time monitoring configuration
-- Database schema with folder indicators
-- Compressed backup availability
+- ✅ Database schema migration status
+- ✅ Enhanced folder tracking capabilities  
+- ✅ Nested folder detection functions
+- ✅ .key file inclusion verification
+- ✅ Real-time monitoring configuration
+- ✅ Compressed backup availability
 
 ### Permission or Database Issues
 
