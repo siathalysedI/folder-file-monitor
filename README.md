@@ -9,12 +9,14 @@ Automatic monitoring of file changes in multiple directories on macOS. Runs as a
 - **SQLite database** with complete history and enhanced indexing
 - **Full file path tracking** from root directory
 - **Enhanced date/time error logging** with timestamps
+- **Complete event tracking** - CREATED, MODIFIED, DELETED events
+- **Advanced event filtering** - filter by single or multiple event types
 - **Advanced time filtering** - status shows last 7 days, recent accepts hours parameter
-- **Detailed statistics** by file and date with complete timestamps
-- **CSV export** for analysis with full paths
+- **Detailed statistics** by file and date with complete timestamps and event breakdown
+- **CSV export** for analysis with full paths and event types
 - **Smart filters** (excludes .git, .DS_Store, temporary files)
 - **Persistent configuration** in config file
-- **Complete control** via enhanced commands
+- **Complete control** via enhanced commands with filtering
 
 ## Installation
 
@@ -139,16 +141,37 @@ chmod +x reinstall_folder_file_monitor.sh
 
 ## Enhanced Usage Commands
 
-### Basic Commands
+### Basic Commands with Event Filtering
 
 ```bash
-# View enhanced status with full paths (last 7 days)
+# View enhanced status with full paths (last 7 days, all events)
 ~/Scripts/folder_file_monitor.sh status
 
-# View recent changes with time parameter
-~/Scripts/folder_file_monitor.sh recent          # Last 24 hours (default)
-~/Scripts/folder_file_monitor.sh recent 6       # Last 6 hours
-~/Scripts/folder_file_monitor.sh recent 168     # Last 7 days (168 hours)
+# Filter by single event type (last 7 days)
+~/Scripts/folder_file_monitor.sh status created     # Only created files
+~/Scripts/folder_file_monitor.sh status modified   # Only modified files
+~/Scripts/folder_file_monitor.sh status deleted    # Only deleted files
+
+# Filter by multiple event types (last 7 days)
+~/Scripts/folder_file_monitor.sh status created|modified    # Created and modified
+~/Scripts/folder_file_monitor.sh status modified|deleted   # Modified and deleted
+~/Scripts/folder_file_monitor.sh status created|deleted    # Created and deleted
+
+# View recent changes with time and event filtering
+~/Scripts/folder_file_monitor.sh recent                     # Last 24 hours, all events
+~/Scripts/folder_file_monitor.sh recent 6                   # Last 6 hours, all events
+~/Scripts/folder_file_monitor.sh recent 6 created          # Last 6 hours, created only
+~/Scripts/folder_file_monitor.sh recent 6 modified         # Last 6 hours, modified only
+~/Scripts/folder_file_monitor.sh recent 6 created|modified # Last 6 hours, created and modified
+~/Scripts/folder_file_monitor.sh recent 168                # Last 7 days (168 hours), all events
+~/Scripts/folder_file_monitor.sh recent 168 deleted        # Last 7 days, deleted only
+
+# View latest log lines with timestamps
+~/Scripts/folder_file_monitor.sh logs
+
+# Export all data with full paths and event types to CSV
+~/Scripts/folder_file_monitor.sh export
+``` (168 hours)
 
 # View latest log lines with timestamps
 ~/Scripts/folder_file_monitor.sh logs
@@ -183,38 +206,55 @@ launchctl load ~/Library/LaunchAgents/com.user.folder.filemonitor.plist
 launchctl list | grep folder.filemonitor
 ```
 
-## Advanced Queries with Full Paths
-
-### Direct SQL Queries
+### Advanced Queries with Event Filtering
 
 ```bash
-# View all changes with full paths from specific time period
+# View all CREATED files with full paths from last 24 hours
 sqlite3 ~/Logs/folder_file_monitor.db "
 SELECT timestamp, filepath, event_type, file_size 
 FROM file_changes 
 WHERE datetime(timestamp) >= datetime('now', '-24 hours') 
+  AND event_type = 'CREATED'
 ORDER BY timestamp DESC;"
 
-# Most modified files with full paths
+# Most active files by event type with full paths
 sqlite3 ~/Logs/folder_file_monitor.db "
-SELECT filepath, COUNT(*) as modifications, MAX(timestamp) as last_modified
+SELECT 
+    filepath, 
+    event_type,
+    COUNT(*) as occurrences, 
+    MAX(timestamp) as last_occurrence
 FROM file_changes 
-GROUP BY filepath 
-ORDER BY modifications DESC, last_modified DESC
-LIMIT 10;"
+WHERE event_type IN ('CREATED', 'MODIFIED', 'DELETED')
+GROUP BY filepath, event_type 
+ORDER BY occurrences DESC, last_occurrence DESC
+LIMIT 15;"
 
-# Statistics by day with enhanced details
+# Daily statistics with event breakdown
 sqlite3 ~/Logs/folder_file_monitor.db "
 SELECT 
     date(timestamp) as date, 
-    COUNT(*) as changes,
+    COUNT(*) as total_changes,
     COUNT(DISTINCT filepath) as unique_files,
+    SUM(CASE WHEN event_type = 'CREATED' THEN 1 ELSE 0 END) as created,
+    SUM(CASE WHEN event_type = 'MODIFIED' THEN 1 ELSE 0 END) as modified,
+    SUM(CASE WHEN event_type = 'DELETED' THEN 1 ELSE 0 END) as deleted,
     MIN(timestamp) as first_change,
     MAX(timestamp) as last_change
 FROM file_changes 
 GROUP BY date(timestamp) 
 ORDER BY date DESC 
 LIMIT 7;"
+
+# Files that were created and then deleted
+sqlite3 ~/Logs/folder_file_monitor.db "
+SELECT DISTINCT c.filepath, c.timestamp as created_at, d.timestamp as deleted_at
+FROM file_changes c
+JOIN file_changes d ON c.filepath = d.filepath
+WHERE c.event_type = 'CREATED' 
+  AND d.event_type = 'DELETED'
+  AND datetime(c.timestamp) < datetime(d.timestamp)
+ORDER BY c.timestamp DESC;"
 ```
 
 ## Enhanced Status Output Example
@@ -399,11 +439,13 @@ rmdir ~/Logs 2>/dev/null || true
 
 - **✅ Full file paths** - Complete paths from root in all outputs
 - **✅ Enhanced logging** - Timestamps on all log entries including errors
+- **✅ Complete event tracking** - CREATED, MODIFIED, DELETED events with smart detection
+- **✅ Advanced event filtering** - Single or multiple event types with pipe separator (|)
 - **✅ Advanced time filtering** - Status shows 7 days, recent accepts hours parameter
-- **✅ Improved database** - Better indexing and performance
-- **✅ Detailed statistics** - More comprehensive file tracking
+- **✅ Improved database** - Better indexing and performance with event type index
+- **✅ Detailed statistics** - Comprehensive file tracking with event breakdowns
 - **✅ Better error handling** - Enhanced error logging with timestamps
-- **✅ Flexible time ranges** - Query any time period with precision
+- **✅ Flexible time ranges** - Query any time period with precision and event filtering
 
 ## Notes
 
