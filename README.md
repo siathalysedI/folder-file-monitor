@@ -1,5 +1,67 @@
 # Folder File Monitor
 
+Monitoreo automático de cambios en archivos de múltiples directorios en macOS. Se ejecuta como servicio en background y registra todos los cambios con timestamps, estadísticas y exportación a CSV.
+
+## Características
+
+- **Inicio automático** al login
+- **Monitoreo en tiempo real** de múltiples directorios simultáneamente
+- **Base de datos SQLite** con historial completo
+- **Estadísticas detalladas** por archivo y fecha
+- **Exportación a CSV** para análisis
+- **Filtros inteligentes** (excluye .git, .DS_Store, temporales)
+- **Configuración persistente** en archivo de configuración
+- **Control completo** via comandos
+
+## Instalación
+
+### Opción 1: Instalación Automática (Recomendada)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/siathalysedI/folder-file-monitor/main/install_folder_file_monitor.sh | bash
+```
+
+**Te solicitará que especifiques qué directorios quieres monitorear. Puedes agregar múltiples directorios.**
+
+### Opción 2: Instalación con Directorio Específico
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/siathalysedI/folder-file-monitor/main/install_folder_file_monitor.sh | bash -s "/ruta/a/tu/directorio"
+```
+
+### Opción 3: Instalación Manual
+
+1. **Instalar dependencias:**
+   ```bash
+   brew install fswatch
+   ```
+
+2. **Crear directorios:**
+   ```bash
+   mkdir -p ~/Scripts ~/Logs ~/Library/LaunchAgents
+   ```
+
+3. **Descargar script principal:**
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/siathalysedI/folder-file-monitor/main/folder_file_monitor.sh -o ~/Scripts/folder_file_monitor.sh
+   chmod +x ~/Scripts/folder_file_monitor.sh
+   ```
+
+4. **Configurar directorios a monitorear:**
+   ```bash
+   echo "/ruta/directorio1" > ~/.folder_monitor_config
+   echo "/ruta/directorio2" >> ~/.folder_monitor_config
+   ```
+
+5. **Crear LaunchAgent:**
+   ```bash
+   cat > ~/Library/LaunchAgents/com.user.folder.filemonitor.plist << 'EOF'
+   <?xml version="1.0" encoding="UTF-8"?>
+   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+   <plist version="1.0">
+   <dict>
+       <key>Label# Folder File Monitor
+
 Monitoreo automático de cambios en archivos de cualquier directorio en macOS. Se ejecuta como servicio en background y registra todos los cambios con timestamps, estadísticas y exportación a CSV.
 
 ## Características
