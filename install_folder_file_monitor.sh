@@ -232,8 +232,20 @@ log_error() {
     echo "[$timestamp] ERROR: $1" | tee -a "$LOG_FILE"
 }
 
-# Initialize SQLite database with enhanced schema
+# Initialize SQLite database with enhanced schema and migration
 init_database() {
+    # Check if database exists and needs migration
+    local needs_migration=0
+    
+    if [ -f "$DB_FILE" ]; then
+        # Check if is_directory column exists
+        if ! sqlite3 "$DB_FILE" "PRAGMA table_info(file_changes);" | grep -q "is_directory"; then
+            log_message "Database migration needed - adding enhanced columns"
+            needs_migration=1
+        fi
+    fi
+    
+    # Create tables with enhanced schema
     sqlite3 "$DB_FILE" <<EOF
 CREATE TABLE IF NOT EXISTS file_changes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -255,7 +267,19 @@ CREATE TABLE IF NOT EXISTS monitor_sessions (
     files_monitored INTEGER DEFAULT 0,
     computer_name TEXT
 );
+EOF
 
+    # Add new columns if migration is needed
+    if [ $needs_migration -eq 1 ]; then
+        log_message "Migrating database schema..."
+        sqlite3 "$DB_FILE" <<EOF 2>/dev/null || true
+ALTER TABLE file_changes ADD COLUMN is_directory INTEGER DEFAULT 0;
+ALTER TABLE file_changes ADD COLUMN parent_directory TEXT;
+EOF
+    fi
+    
+    # Create indexes (will be ignored if they already exist)
+    sqlite3 "$DB_FILE" <<EOF 2>/dev/null || true
 CREATE INDEX IF NOT EXISTS idx_timestamp ON file_changes(timestamp);
 CREATE INDEX IF NOT EXISTS idx_filename ON file_changes(filename);
 CREATE INDEX IF NOT EXISTS idx_session ON file_changes(session_id);
@@ -264,6 +288,10 @@ CREATE INDEX IF NOT EXISTS idx_event_type ON file_changes(event_type);
 CREATE INDEX IF NOT EXISTS idx_is_directory ON file_changes(is_directory);
 CREATE INDEX IF NOT EXISTS idx_parent_directory ON file_changes(parent_directory);
 EOF
+    
+    if [ $needs_migration -eq 1 ]; then
+        log_message "Database migration completed successfully"
+    fi
 }
 
 # Unique session ID
