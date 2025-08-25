@@ -1,11 +1,19 @@
-#!/bin/bash
+echo ""
+echo "🚨 RECOMMENDED AGGRESSIVE ACTIONS:"
+echo "=================================="
+if [ $ISSUES -gt 0 ]; then
+    echo "🔧 Critical issues found - run AGGRESSIVE reinstallation:"
+    echo "   curl -fsSL https://raw.githubusercontent.com/your-repo/reinstall_folder_file_monitor.sh | bash"
+elif [ $WARNINGS -gt 0 ]; then
+    echo "⚡ Minor issues found - run AGGRESSIVE update:"
+    echo "   curl -fsS#!/bin/bash
 
 # ENHANCED DIAGNOSTICS - FOLDER FILE MONITOR
 # Run these commands to find problems with enhanced folder tracking details
 # Enhanced version with folder tracking verification
 
-echo "🔍 ENHANCED FOLDER FILE MONITOR DIAGNOSTICS"
-echo "============================================"
+echo "🔍 AGGRESSIVE FOLDER FILE MONITOR DIAGNOSTICS"
+echo "=============================================="
 echo "Diagnostic started: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "System: $(uname -s) $(uname -r)"
 echo "User: $(whoami)"
@@ -17,7 +25,7 @@ log_diagnostic() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
-log_diagnostic "Starting enhanced diagnostic scan with folder tracking verification"
+log_diagnostic "Starting AGGRESSIVE diagnostic scan with zero path length limits verification"
 
 # 1. Check service status with enhanced details
 echo "1️⃣ Enhanced service status check:"
@@ -25,7 +33,7 @@ echo "=================================="
 if [ -f ~/Scripts/folder_file_monitor.sh ]; then
     ~/Scripts/folder_file_monitor.sh status
     echo ""
-    log_diagnostic "Service status command completed"
+    log_diagnostic "AGGRESSIVE service status command completed"
 else
     echo "❌ Script not found at ~/Scripts/folder_file_monitor.sh"
     log_diagnostic "ERROR: Main script missing"
@@ -200,10 +208,12 @@ if [ -f ~/Logs/folder_file_monitor.log ]; then
     done
     
     echo ""
-    echo "📊 Enhanced log statistics (last 100 lines):"
+    echo "📊 AGGRESSIVE log statistics (last 100 lines):"
     echo "  Total entries: $(wc -l < ~/Logs/folder_file_monitor.log)"
     echo "  Recent errors: $(tail -100 ~/Logs/folder_file_monitor.log | grep -c "ERROR" || echo "0")"
-    echo "  Recent starts: $(tail -100 ~/Logs/folder_file_monitor.log | grep -c "Starting.*Enhanced" || echo "0")"
+    echo "  AGGRESSIVE starts: $(tail -100 ~/Logs/folder_file_monitor.log | grep -c "AGGRESSIVE.*monitoring" || echo "0")"
+    echo "  Hybrid detections: $(tail -100 ~/Logs/folder_file_monitor.log | grep -c "HYBRID DETECTION" || echo "0")"
+    echo "  Extreme paths: $(tail -100 ~/Logs/folder_file_monitor.log | grep -c "EXTREME PATH" || echo "0")"
     echo "  Recent stops: $(tail -100 ~/Logs/folder_file_monitor.log | grep -c "Stopping Folder" || echo "0")"
     echo "  Folder events: $(tail -100 ~/Logs/folder_file_monitor.log | grep -c "\[FOLDER\]" || echo "0")"
     echo "  File events: $(tail -100 ~/Logs/folder_file_monitor.log | grep -c "\[FILE\]" || echo "0")"
@@ -279,10 +289,264 @@ if command -v fswatch &> /dev/null; then
     echo "✅ fswatch found: $(which fswatch)"
     echo "   Version: $(fswatch --version 2>&1 | head -1)"
     
-    # Test fswatch with enhanced parameters
+    # Test fswatch with enhanced parameters for long paths
     echo ""
-    echo "🧪 Testing fswatch with enhanced parameters:"
-    timeout 2s fswatch --latency=0.1 --exclude='\.DS_Store$' --exclude='/\.git/' "$HOME" >/dev/null 2>&1 && echo "✅ fswatch enhanced parameters work" || echo "⚠️  fswatch enhanced parameters may have issues"
+    echo "🧪 Testing fswatch with enhanced parameters for long paths:"
+    timeout 2s fswatch --latency=0.3 --batch-marker --exclude='\.DS_Store
+else
+    echo "❌ fswatch NOT found"
+fi
+
+echo ""
+echo "🖥️ System information:"
+echo "  macOS version: $(sw_vers -productVersion)"
+echo "  Computer name: $(scutil --get ComputerName 2>/dev/null || echo "Unknown")"
+echo "  Current user: $(whoami)"
+echo "  Home directory: $HOME"
+echo "  Current time: $(date '+%Y-%m-%d %H:%M:%S')"
+
+echo ""
+echo "8️⃣ Process verification:"
+echo "========================"
+echo "🔍 Related processes:"
+ps aux | grep -E "(folder_file_monitor|fswatch)" | grep -v grep || echo "❌ No related processes found"
+
+echo ""
+echo "💾 Memory and disk usage:"
+echo "  Available disk space: $(df -h ~ | tail -1 | awk '{print $4}')"
+echo "  System load: $(uptime | awk -F'load average:' '{print $2}')"
+
+echo ""
+echo "9️⃣ Network and connectivity:"
+echo "============================"
+echo "🌐 Testing GitHub connectivity:"
+if curl -s --connect-timeout 5 https://github.com > /dev/null; then
+    echo "✅ GitHub accessible"
+else
+    echo "❌ GitHub not accessible (may affect updates)"
+fi
+
+echo ""
+echo "🔟 Enhanced functionality test:"
+echo "==============================="
+if [ -f ~/Scripts/folder_file_monitor.sh ]; then
+    echo "📊 Testing recent command with folder/file filtering (last 1 hour, all events):"
+    ~/Scripts/folder_file_monitor.sh recent 1 2>/dev/null || echo "❌ Recent command failed"
+    
+    echo ""
+    echo "📁 Testing folder-specific filtering (last 1 hour, created only):"
+    ~/Scripts/folder_file_monitor.sh recent 1 created 2>/dev/null || echo "❌ Event filtering failed"
+    
+    echo ""
+    echo "📋 Testing status with event filtering (created events only):"
+    ~/Scripts/folder_file_monitor.sh status created 2>/dev/null || echo "❌ Status filtering failed"
+    
+    echo ""
+    echo "📋 Testing list command:"
+    ~/Scripts/folder_file_monitor.sh list 2>/dev/null || echo "❌ List command failed"
+    
+    echo ""
+    echo "🧪 Testing enhanced event filter parsing:"
+    # Test if the script accepts pipe-separated event filters
+    echo "   Testing: created|modified filter"
+    ~/Scripts/folder_file_monitor.sh recent 1 "created|modified" >/dev/null 2>&1 && echo "   ✅ Pipe filtering works" || echo "   ❌ Pipe filtering failed"
+    
+    echo "   Testing: folder detection capability"
+    if grep -q "is_directory.*=.*1" ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "   ✅ Folder detection capability present"
+    else
+        echo "   ❌ Folder detection capability missing"
+    fi
+    
+    echo "   Testing: .key file inclusion"
+    if grep -q -v "exclude.*key" ~/Scripts/folder_file_monitor.sh 2>/dev/null && ! grep -q "exclude.*\\.key" ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "   ✅ .key files should be included (not excluded)"
+    else
+        echo "   ⚠️  .key files may be excluded - check configuration"
+    fi
+else
+    echo "❌ Cannot perform functionality tests - script missing"
+fi
+
+echo ""
+echo "📊 ENHANCED DIAGNOSTIC SUMMARY"
+echo "=============================="
+log_diagnostic "Enhanced diagnostic scan completed"
+
+# Generate summary
+ISSUES=0
+WARNINGS=0
+
+echo ""
+if [ ! -f ~/Scripts/folder_file_monitor.sh ]; then
+    echo "🚨 CRITICAL: Main script missing"
+    ISSUES=$((ISSUES + 1))
+fi
+
+if [ ! -f ~/Logs/folder_file_monitor.db ]; then
+    echo "⚠️ WARNING: Database file missing"
+    WARNINGS=$((WARNINGS + 1))
+fi
+
+if ! command -v fswatch &> /dev/null; then
+    echo "🚨 CRITICAL: fswatch not installed"
+    ISSUES=$((ISSUES + 1))
+fi
+
+if ! launchctl list | grep -q folder.filemonitor; then
+    echo "⚠️ WARNING: LaunchAgent not registered"
+    WARNINGS=$((WARNINGS + 1))
+fi
+
+# Check for enhanced features
+if [ -f ~/Scripts/folder_file_monitor.sh ]; then
+    if ! grep -q "is_directory.*INTEGER.*DEFAULT.*0" ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "⚠️ WARNING: Enhanced folder tracking missing"
+        WARNINGS=$((WARNINGS + 1))
+    fi
+    
+    if ! grep -q "handle_nested_folders" ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "⚠️ WARNING: Nested folder handling missing"
+        WARNINGS=$((WARNINGS + 1))
+    fi
+    
+    if ! grep -q "latency=0.1" ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "⚠️ WARNING: Real-time monitoring not configured"
+        WARNINGS=$((WARNINGS + 1))
+    fi
+fi
+
+if [ $ISSUES -eq 0 ] && [ $WARNINGS -eq 0 ]; then
+    echo "✅ All enhanced systems operational"
+elif [ $ISSUES -eq 0 ]; then
+    echo "⚠️ $WARNINGS warning(s) found - enhanced system mostly functional"
+else
+    echo "🚨 $ISSUES critical issue(s) and $WARNINGS warning(s) found"
+    echo ""
+    echo "💡 Next steps:"
+    echo "   1. Run enhanced install: curl -fsSL https://raw.githubusercontent.com/your-repo/install_folder_file_monitor.sh | bash"
+    echo "   2. Or enhanced reinstall: bash reinstall_folder_file_monitor.sh"
+    echo "   3. Or enhanced update: bash folder_file_monitor_update.sh"
+fi
+
+echo ""
+log_diagnostic "Enhanced diagnostics completed with $ISSUES critical issues and $WARNINGS warnings"
+echo ""
+echo "🎯 ENHANCED FEATURES VERIFICATION:"
+echo "================================="
+if [ -f ~/Scripts/folder_file_monitor.sh ]; then
+    echo "✅ Enhanced script with folder tracking available"
+    
+    if grep -q "handle_nested_folders" ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "✅ Nested folder creation handling detected"
+    else
+        echo "⚠️  Nested folder creation handling may not be available"
+    fi
+    
+    if grep -q "is_directory.*INTEGER.*DEFAULT.*0" ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "✅ Enhanced database schema with folder tracking detected"
+    else
+        echo "⚠️  Enhanced database schema may not be available"
+    fi
+    
+    if grep -q "latency=0.3" ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "✅ Optimized monitoring (0.3s latency for long paths) detected"
+    else
+        echo "⚠️  Optimized monitoring for long paths may not be available"
+    fi
+    
+    if grep -q "batch-marker" ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "✅ Batch marker processing for long paths detected"
+    else
+        echo "⚠️  Batch marker processing may not be available"
+    fi️  Real-time monitoring configuration may need update"
+    fi
+    
+    if grep -q '\[FOLDER\].*\[FILE\]' ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "✅ Enhanced logging with [FOLDER]/[FILE] prefixes detected"
+    else
+        echo "⚠️  Enhanced logging prefixes may not be available"
+    fi
+    
+    if [ -f ~/Logs/folder_file_monitor.db ]; then
+        # Check if database has enhanced indexes
+        if sqlite3 ~/Logs/folder_file_monitor.db "PRAGMA index_list(file_changes);" 2>/dev/null | grep -q "idx_is_directory"; then
+            echo "✅ Enhanced database indexing (folder tracking) detected"
+        else
+            echo "⚠️  Enhanced database indexing may need update"
+        fi
+        
+        # Check if database has folder records
+        folder_count=$(sqlite3 ~/Logs/folder_file_monitor.db "SELECT COUNT(*) FROM file_changes WHERE is_directory = 1;" 2>/dev/null || echo "0")
+        if [ "$folder_count" -gt 0 ]; then
+            echo "✅ Database contains $folder_count folder tracking records"
+        else
+            echo "⚠️  No folder tracking records found - create some folders to test"
+        fi
+    fi
+    
+    # Check for .key file support (should NOT be excluded)
+    if ! grep -q "exclude.*\\.key" ~/Scripts/folder_file_monitor.sh 2>/dev/null; then
+        echo "✅ .key files are included (not excluded from monitoring)"
+    else
+        echo "❌ .key files are being excluded - configuration error"
+    fi
+else
+    echo "❌ Enhanced script not available"
+fi
+
+echo ""
+echo "🚀 RECOMMENDED ACTIONS:"
+echo "======================"
+if [ $ISSUES -gt 0 ]; then
+    echo "🔧 Critical issues found - run enhanced reinstallation:"
+    echo "   bash reinstall_folder_file_monitor.sh"
+elif [ $WARNINGS -gt 0 ]; then
+    echo "⚡ Minor issues found - run enhanced update:"
+    echo "   bash folder_file_monitor_update.sh"
+else
+    echo "✨ System optimal - try the enhanced folder tracking features:"
+    echo "   ~/Scripts/folder_file_monitor.sh status created"
+    echo "   ~/Scripts/folder_file_monitor.sh recent 1 created|modified"
+    echo "   ~/Scripts/folder_file_monitor.sh recent 1 deleted"
+    echo ""
+    echo "🧪 Test folder tracking by creating nested folders:"
+    echo "   mkdir -p ~/test-monitor/level1/level2"
+    echo "   touch ~/test-monitor/level1/level2/test.key"
+    echo "   ~/Scripts/folder_file_monitor.sh recent 1 created"
+    echo "   # Should show [FOLDER] and [FILE] entries for all created items"
+fi
+
+echo ""
+echo "📦 BACKUP VERIFICATION:"
+echo "======================"
+backup_count=$(find ~/Logs -name "folder_file_monitor_backup_*.tar.gz" 2>/dev/null | wc -l | tr -d ' ')
+if [ "$backup_count" -gt 0 ]; then
+    echo "✅ Found $backup_count compressed database backup(s):"
+    find ~/Logs -name "folder_file_monitor_backup_*.tar.gz" -exec ls -lh {} \; | tail -3
+    echo "💡 Backups are automatically created during reinstalls and updates"
+else
+    echo "⚠️  No compressed backups found"
+    echo "💡 Run reinstall or update to create automatic backups"
+fi
+
+echo ""
+echo "🎯 QUICK TEST COMMANDS FOR LONG PATHS:"
+echo "======================================"
+echo "Test enhanced folder tracking in deep directory:"
+echo "  1. mkdir -p ~/test-long-path/very/deep/nested/folder/structure/level/$(date +%s)"
+echo "  2. touch ~/test-long-path/very/deep/nested/folder/structure/level/*/test.key"
+echo "  3. ~/Scripts/folder_file_monitor.sh recent 1 created"
+echo "  4. Should see [FOLDER] and [FILE] entries with path truncation if very long"
+echo ""
+echo "Test path length handling:"
+echo "  • ~/Scripts/folder_file_monitor.sh logs | grep 'Very long path'"
+echo "  • ~/Scripts/folder_file_monitor.sh logs | grep 'Path truncated'"
+echo ""
+echo "Test enhanced filtering:"
+echo "  • ~/Scripts/folder_file_monitor.sh status created       # Only created items"
+echo "  • ~/Scripts/folder_file_monitor.sh status modified      # Only modified items"
+echo "  • ~/Scripts/folder_file_monitor.sh recent 1 created|modified  # Multiple events" --exclude='/\.git/' "$HOME" >/dev/null 2>&1 && echo "✅ fswatch enhanced parameters work for long paths" || echo "⚠️  fswatch enhanced parameters may have issues"
 else
     echo "❌ fswatch NOT found"
 fi
