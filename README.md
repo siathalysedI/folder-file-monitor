@@ -1,11 +1,14 @@
-# Folder File Monitor - Enhanced Edition
+# Enhanced Folder File Monitor - Complete Edition
 
-Automatic monitoring of file changes in multiple directories on macOS. Runs as a background service and logs all changes with timestamps, statistics, and CSV export. Now with enhanced features including full file paths, advanced time filtering, and improved error logging.
+Automatic monitoring of file and directory changes in multiple directories on macOS. Runs as a background service with real-time detection and logs all changes with timestamps, statistics, and CSV export. Now with complete directory monitoring, nested folder support, and instant event detection.
 
 ## Enhanced Features
 
 - **Automatic startup** on login
-- **Real-time monitoring** of multiple directories simultaneously
+- **Real-time monitoring** of files AND directories simultaneously
+- **Nested directory creation** - tracks every level of folder creation
+- **All file types supported** - including .key, .pem, .crt, and all other extensions
+- **Instant event detection** - 0.1 second latency for immediate updates
 - **SQLite database** with complete history and enhanced indexing
 - **Full file path tracking** from root directory
 - **Enhanced date/time error logging** with timestamps
@@ -14,8 +17,9 @@ Automatic monitoring of file changes in multiple directories on macOS. Runs as a
 - **Advanced time filtering** - status shows last 7 days, recent accepts hours parameter
 - **Detailed statistics** by file and date with complete timestamps and event breakdown
 - **CSV export** for analysis with full paths and event types
-- **Smart filters** (excludes .git, .DS_Store, temporary files)
+- **Smart filters** (excludes only .DS_Store, .git/, temp files)
 - **Persistent configuration** in config file
+- **Database backup system** - automatic compressed backups during reinstalls
 - **Complete control** via enhanced commands with filtering
 
 ## Installation
@@ -98,6 +102,8 @@ curl -fsSL https://raw.githubusercontent.com/siathalysedI/folder-file-monitor/ma
        <true/>
        <key>ThrottleInterval</key>
        <integer>1</integer>
+       <key>Nice</key>
+       <integer>1</integer>
    </dict>
    </plist>
    EOF
@@ -121,355 +127,19 @@ curl -fsSL https://raw.githubusercontent.com/siathalysedI/folder-file-monitor/ma
 curl -fsSL https://raw.githubusercontent.com/siathalysedI/folder-file-monitor/main/folder_file_monitor_update.sh | bash
 ```
 
-**Automatically updates to enhanced version with full path tracking and advanced time filtering.**
+**Automatically updates to enhanced version with complete directory monitoring and instant detection.**
 
-## Complete Reinstallation (Change directory or upgrade to enhanced features)
+## Complete Reinstallation (With Database Backup)
 
-To update to the latest enhanced version and/or change the directory to monitor:
+To update to the latest enhanced version and/or change directories (includes automatic database backup):
 
 ```bash
-# Download enhanced reinstallation script
+# Download enhanced reinstallation script with backup feature
 curl -fsSL https://raw.githubusercontent.com/siathalysedI/folder-file-monitor/main/reinstall_folder_file_monitor.sh -o reinstall_folder_file_monitor.sh
 chmod +x reinstall_folder_file_monitor.sh
 
-# Reinstall with enhanced features
+# Reinstall with enhanced features (creates compressed database backup)
 ./reinstall_folder_file_monitor.sh /new/path/to/monitor
 
 # Or run without parameters to maintain current configuration
-./reinstall_folder_file_monitor.sh
-```
-
-## Enhanced Usage Commands
-
-### Basic Commands with Event Filtering
-
-```bash
-# View enhanced status with full paths (last 7 days, all events)
-~/Scripts/folder_file_monitor.sh status
-
-# Filter by single event type (last 7 days)
-~/Scripts/folder_file_monitor.sh status created     # Only created files
-~/Scripts/folder_file_monitor.sh status modified   # Only modified files
-~/Scripts/folder_file_monitor.sh status deleted    # Only deleted files
-
-# Filter by multiple event types (last 7 days)
-~/Scripts/folder_file_monitor.sh status created|modified    # Created and modified
-~/Scripts/folder_file_monitor.sh status modified|deleted   # Modified and deleted
-~/Scripts/folder_file_monitor.sh status created|deleted    # Created and deleted
-
-# View recent changes with time and event filtering
-~/Scripts/folder_file_monitor.sh recent                     # Last 24 hours, all events
-~/Scripts/folder_file_monitor.sh recent 6                   # Last 6 hours, all events
-~/Scripts/folder_file_monitor.sh recent 6 created          # Last 6 hours, created only
-~/Scripts/folder_file_monitor.sh recent 6 modified         # Last 6 hours, modified only
-~/Scripts/folder_file_monitor.sh recent 6 created|modified # Last 6 hours, created and modified
-~/Scripts/folder_file_monitor.sh recent 168                # Last 7 days (168 hours), all events
-~/Scripts/folder_file_monitor.sh recent 168 deleted        # Last 7 days, deleted only
-
-# View latest log lines with timestamps
-~/Scripts/folder_file_monitor.sh logs
-
-# Export all data with full paths and event types to CSV
-~/Scripts/folder_file_monitor.sh export
-``` (168 hours)
-
-# View latest log lines with timestamps
-~/Scripts/folder_file_monitor.sh logs
-
-# Export all data with full paths to CSV
-~/Scripts/folder_file_monitor.sh export
-```
-
-### Service Control
-
-```bash
-# Start monitor manually
-~/Scripts/folder_file_monitor.sh start
-
-# Stop monitor
-~/Scripts/folder_file_monitor.sh stop
-
-# Restart monitor
-~/Scripts/folder_file_monitor.sh restart
-```
-
-### LaunchAgent Control
-
-```bash
-# Stop automatic service
-launchctl unload ~/Library/LaunchAgents/com.user.folder.filemonitor.plist
-
-# Start automatic service
-launchctl load ~/Library/LaunchAgents/com.user.folder.filemonitor.plist
-
-# View service status
-launchctl list | grep folder.filemonitor
-```
-
-### Advanced Queries with Event Filtering
-
-```bash
-# View all CREATED files with full paths from last 24 hours
-sqlite3 ~/Logs/folder_file_monitor.db "
-SELECT timestamp, filepath, event_type, file_size 
-FROM file_changes 
-WHERE datetime(timestamp) >= datetime('now', '-24 hours') 
-  AND event_type = 'CREATED'
-ORDER BY timestamp DESC;"
-
-# Most active files by event type with full paths
-sqlite3 ~/Logs/folder_file_monitor.db "
-SELECT 
-    filepath, 
-    event_type,
-    COUNT(*) as occurrences, 
-    MAX(timestamp) as last_occurrence
-FROM file_changes 
-WHERE event_type IN ('CREATED', 'MODIFIED', 'DELETED')
-GROUP BY filepath, event_type 
-ORDER BY occurrences DESC, last_occurrence DESC
-LIMIT 15;"
-
-# Daily statistics with event breakdown
-sqlite3 ~/Logs/folder_file_monitor.db "
-SELECT 
-    date(timestamp) as date, 
-    COUNT(*) as total_changes,
-    COUNT(DISTINCT filepath) as unique_files,
-    SUM(CASE WHEN event_type = 'CREATED' THEN 1 ELSE 0 END) as created,
-    SUM(CASE WHEN event_type = 'MODIFIED' THEN 1 ELSE 0 END) as modified,
-    SUM(CASE WHEN event_type = 'DELETED' THEN 1 ELSE 0 END) as deleted,
-    MIN(timestamp) as first_change,
-    MAX(timestamp) as last_change
-FROM file_changes 
-GROUP BY date(timestamp) 
-ORDER BY date DESC 
-LIMIT 7;"
-
-# Files that were created and then deleted
-sqlite3 ~/Logs/folder_file_monitor.db "
-SELECT DISTINCT c.filepath, c.timestamp as created_at, d.timestamp as deleted_at
-FROM file_changes c
-JOIN file_changes d ON c.filepath = d.filepath
-WHERE c.event_type = 'CREATED' 
-  AND d.event_type = 'DELETED'
-  AND datetime(c.timestamp) < datetime(d.timestamp)
-ORDER BY c.timestamp DESC;"
-```
-
-## Enhanced Status Output Example
-
-```
-📊 Folder File Monitor Status
-=============================
-✅ Status: RUNNING (PID: 1234)
-Config file: /Users/username/.folder_monitor_config
-📄 Log: /Users/username/Logs/folder_file_monitor.log
-🗄️ Database: /Users/username/Logs/folder_file_monitor.db
-
-Monitored directories:
-  - /Users/username/Documents/projects
-  - /Users/username/work/code
-
-📈 Statistics (Last 7 days):
-total_changes  unique_files  unique_paths  last_change
--------------  ------------  ------------  -------------------
-142            28            31            2025-08-25 14:32:15
-
-🔥 Most modified files (Last 7 days):
-full_path                                    modifications  last_modified
------------                                  -------------  -------------------
-/Users/username/Documents/projects/app.py   15             2025-08-25 14:32:15
-/Users/username/work/code/main.js           12             2025-08-25 13:45:22
-/Users/username/Documents/projects/README.md 8             2025-08-25 12:10:33
-
-📅 Recent activity (Last 7 days):
-date_time           full_path                               event     size
--------------------  ------------------------------------   --------  ------
-2025-08-25 14:32:15  /Users/username/Documents/projects/app.py  MODIFIED  2.1 KB
-2025-08-25 14:30:12  /Users/username/work/code/main.js      MODIFIED  5.8 KB
-2025-08-25 14:28:45  /Users/username/Documents/README.md    MODIFIED  1.2 KB
-```
-
-## Recent Command Examples
-
-```bash
-# Show last 24 hours (default)
-~/Scripts/folder_file_monitor.sh recent
-
-📋 File changes in the last 24 hours:
-=====================================
-date_time           full_path                               event     size
--------------------  ------------------------------------   --------  ------
-2025-08-25 14:32:15  /Users/username/Documents/projects/app.py  MODIFIED  2.1 KB
-2025-08-25 14:30:12  /Users/username/work/code/main.js      MODIFIED  5.8 KB
-
-# Show last 6 hours
-~/Scripts/folder_file_monitor.sh recent 6
-
-# Show last 7 days (168 hours)
-~/Scripts/folder_file_monitor.sh recent 168
-```
-
-## File Locations
-
-| File | Location | Description |
-|------|----------|-------------|
-| **Enhanced script** | `~/Scripts/folder_file_monitor.sh` | Main executable with full path support |
-| **Database** | `~/Logs/folder_file_monitor.db` | SQLite with history and enhanced indexing |
-| **Enhanced log** | `~/Logs/folder_file_monitor.log` | Monitor log with timestamps and full paths |
-| **System log** | `~/Logs/folder_launchd.log` | LaunchAgent log |
-| **Error log** | `~/Logs/folder_launchd_error.log` | Enhanced error log with timestamps |
-| **Service** | `~/Library/LaunchAgents/com.user.folder.filemonitor.plist` | Service configuration |
-| **Config** | `~/.folder_monitor_config` | Directory configuration |
-
-## Enhanced Maintenance
-
-### Clean Old Records with Verification
-
-```bash
-# Check database size before cleanup
-du -h ~/Logs/folder_file_monitor.db
-sqlite3 ~/Logs/folder_file_monitor.db "SELECT COUNT(*) as total_records FROM file_changes;"
-
-# Delete records older than 90 days
-sqlite3 ~/Logs/folder_file_monitor.db "
-DELETE FROM file_changes 
-WHERE datetime(timestamp) < datetime('now', '-90 days');"
-
-# Optimize database with enhanced indexing
-sqlite3 ~/Logs/folder_file_monitor.db "VACUUM;"
-
-# Verify cleanup
-sqlite3 ~/Logs/folder_file_monitor.db "SELECT COUNT(*) as remaining_records FROM file_changes;"
-```
-
-### Enhanced Database Analysis
-
-```bash
-# View database statistics
-sqlite3 ~/Logs/folder_file_monitor.db "
-SELECT 
-    COUNT(*) as total_records,
-    COUNT(DISTINCT filepath) as unique_files,
-    MIN(timestamp) as oldest_record,
-    MAX(timestamp) as newest_record,
-    COUNT(DISTINCT date(timestamp)) as days_tracked
-FROM file_changes;"
-
-# Top directories by activity
-sqlite3 ~/Logs/folder_file_monitor.db "
-SELECT 
-    substr(filepath, 1, instr(filepath || '/', '/', instr(filepath, '/', 2) + 1) - 1) as directory,
-    COUNT(*) as changes
-FROM file_changes 
-WHERE datetime(timestamp) >= datetime('now', '-7 days')
-GROUP BY directory 
-ORDER BY changes DESC 
-LIMIT 10;"
-```
-
-## Enhanced Troubleshooting
-
-### Monitor doesn't detect changes
-
-1. **Check enhanced status with full diagnostics:**
-   ```bash
-   ~/Scripts/folder_file_monitor.sh status
-   ```
-
-2. **Check enhanced logs with timestamps:**
-   ```bash
-   ~/Scripts/folder_file_monitor.sh logs
-   tail -f ~/Logs/folder_launchd_error.log
-   ```
-
-3. **Test with time-specific recent command:**
-   ```bash
-   ~/Scripts/folder_file_monitor.sh recent 1    # Last hour only
-   ```
-
-4. **Restart service:**
-   ```bash
-   ~/Scripts/folder_file_monitor.sh restart
-   ```
-
-### Enhanced Diagnostics Script
-
-Run the enhanced diagnostics script to troubleshoot issues:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/siathalysedI/folder-file-monitor/main/folder-file-monitor-diagnostics.sh | bash
-```
-
-### Permission or Database Issues
-
-```bash
-# Check script permissions
-ls -la ~/Scripts/folder_file_monitor.sh
-chmod +x ~/Scripts/folder_file_monitor.sh
-
-# Check database permissions and integrity
-sqlite3 ~/Logs/folder_file_monitor.db "PRAGMA integrity_check;"
-sqlite3 ~/Logs/folder_file_monitor.db "PRAGMA table_info(file_changes);"
-
-# Check log file permissions
-ls -la ~/Logs/folder_file_monitor.log
-```
-
-## Uninstallation
-
-```bash
-# 1. Stop and unload service
-launchctl unload ~/Library/LaunchAgents/com.user.folder.filemonitor.plist
-
-# 2. Remove all files
-rm -f ~/Library/LaunchAgents/com.user.folder.filemonitor.plist
-rm -f ~/Scripts/folder_file_monitor.sh
-rm -f ~/.folder_monitor_config
-rm -f ~/Logs/folder_file_monitor.*
-rm -f ~/Logs/folder_launchd.*
-
-# 3. Clean empty directories
-rmdir ~/Scripts 2>/dev/null || true
-rmdir ~/Logs 2>/dev/null || true
-```
-
-## Enhanced Features Summary
-
-- **✅ Full file paths** - Complete paths from root in all outputs
-- **✅ Enhanced logging** - Timestamps on all log entries including errors
-- **✅ Complete event tracking** - CREATED, MODIFIED, DELETED events with smart detection
-- **✅ Advanced event filtering** - Single or multiple event types with pipe separator (|)
-- **✅ Advanced time filtering** - Status shows 7 days, recent accepts hours parameter
-- **✅ Improved database** - Better indexing and performance with event type index
-- **✅ Detailed statistics** - Comprehensive file tracking with event breakdowns
-- **✅ Better error handling** - Enhanced error logging with timestamps
-- **✅ Flexible time ranges** - Query any time period with precision and event filtering
-
-## Notes
-
-- **Enhanced monitoring:** All files tracked with complete paths from root
-- **Improved logging:** All log entries include full timestamps and detailed error information
-- **Advanced filtering:** Status shows last 7 days by default, recent command accepts any hour value
-- **Database optimization:** Enhanced indexing for better performance with large datasets
-- **Automatic startup:** Activates on each login with enhanced error recovery
-- **Performance:** Uses `LowPriorityIO` to not impact system performance
-- **Database:** SQLite with enhanced schema for better queries and reliability
-- **Compatibility:** macOS with Homebrew, optimized for macOS Sequoia
-
-## Contributing
-
-1. Fork the repository
-2. Create your branch (`git checkout -b feature/enhanced-functionality`)
-3. Commit your changes (`git commit -am 'Add enhanced functionality'`)
-4. Push to the branch (`git push origin feature/enhanced-functionality`)
-5. Create a Pull Request
-
-## License
-
-MIT License - see LICENSE file for details.
-
----
-
-**Enhanced Edition** - Now with full file path tracking, advanced time filtering, and improved error logging for professional file monitoring on macOS.
+./reinstall_folder_
