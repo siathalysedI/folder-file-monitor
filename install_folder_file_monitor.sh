@@ -67,9 +67,41 @@ setup_directories() {
         done
 }
 
-# Enhanced status display with full paths and 7-day default
+# Function to parse event type filter
+parse_event_filter() {
+    local filter="$1"
+    if [ -z "$filter" ]; then
+        echo "('CREATED', 'MODIFIED', 'DELETED')"
+    else
+        # Convert pipe-separated values to SQL IN clause
+        local sql_filter=""
+        IFS='|' read -ra EVENTS <<< "$filter"
+        for event in "${EVENTS[@]}"; do
+            event=$(echo "$event" | tr '[:lower:]' '[:upper:]')
+            if [[ "$event" =~ ^(CREATED|MODIFIED|DELETED)$ ]]; then
+                if [ -n "$sql_filter" ]; then
+                    sql_filter="$sql_filter, "
+                fi
+                sql_filter="$sql_filter'$event'"
+            fi
+        done
+        if [ -n "$sql_filter" ]; then
+            echo "($sql_filter)"
+        else
+            echo "('CREATED', 'MODIFIED', 'DELETED')"
+        fi
+    fi
+}
+
+# Enhanced status display with event filtering and 7-day default
 show_status() {
+    local event_filter="$1"
+    local filter_clause=$(parse_event_filter "$event_filter")
+    
     echo "📊 Folder File Monitor Status"
+    if [ -n "$event_filter" ]; then
+        echo "Filter: $event_filter events only"
+    fi
     echo "============================="
     
     if [ -f "$PID_FILE" ]; then
@@ -98,22 +130,30 @@ show_status() {
                         COUNT(*) as total_changes,
                         COUNT(DISTINCT filename) as unique_files,
                         COUNT(DISTINCT filepath) as unique_paths,
-                        MAX(timestamp) as last_change
+                        MAX(timestamp) as last_change,
+                        SUM(CASE WHEN event_type = 'CREATED' THEN 1 ELSE 0 END) as created,
+                        SUM(CASE WHEN event_type = 'MODIFIED' THEN 1 ELSE 0 END) as modified,
+                        SUM(CASE WHEN event_type = 'DELETED' THEN 1 ELSE 0 END) as deleted
                     FROM file_changes 
-                    WHERE date(timestamp) >= date('now', '-7 days');
+                    WHERE date(timestamp) >= date('now', '-7 days')
+                      AND event_type IN $filter_clause;
                 " 2>/dev/null || echo "Database error"
                 
                 echo ""
-                echo "🔥 Most modified files (Last 7 days):"
+                echo "🔥 Most active files (Last 7 days):"
                 sqlite3 -header -column "$DB_FILE" "
                     SELECT 
                         filepath as full_path,
-                        COUNT(*) as modifications,
-                        MAX(timestamp) as last_modified
+                        COUNT(*) as total_changes,
+                        MAX(timestamp) as last_change,
+                        SUM(CASE WHEN event_type = 'CREATED' THEN 1 ELSE 0 END) as created,
+                        SUM(CASE WHEN event_type = 'MODIFIED' THEN 1 ELSE 0 END) as modified,
+                        SUM(CASE WHEN event_type = 'DELETED' THEN 1 ELSE 0 END) as deleted
                     FROM file_changes 
                     WHERE date(timestamp) >= date('now', '-7 days')
+                      AND event_type IN $filter_clause
                     GROUP BY filepath 
-                    ORDER BY modifications DESC, last_modified DESC
+                    ORDER BY total_changes DESC, last_change DESC
                     LIMIT 10;
                 " 2>/dev/null || echo "Database error"
                 
@@ -131,6 +171,7 @@ show_status() {
                         END as size
                     FROM file_changes 
                     WHERE date(timestamp) >= date('now', '-7 days')
+                      AND event_type IN $filter_clause
                     ORDER BY timestamp DESC 
                     LIMIT 20;
                 " 2>/dev/null || echo "Database error"
@@ -191,12 +232,17 @@ stop_daemon() {
     fi
 }
 
-# Enhanced recent history with hours parameter and full paths
+# Enhanced recent history with hours parameter, event filtering, and full paths
 show_recent() {
     local hours=${1:-24}  # Default to 24 hours if no parameter provided
+    local event_filter="$2"
+    local filter_clause=$(parse_event_filter "$event_filter")
     
     if [ -f "$DB_FILE" ]; then
         echo "📋 File changes in the last $hours hours:"
+        if [ -n "$event_filter" ]; then
+            echo "Filter: $event_filter events only"
+        fi
         echo "======================================="
         sqlite3 -header -column "$DB_FILE" "
             SELECT 
@@ -210,6 +256,7 @@ show_recent() {
                 END as size
             FROM file_changes 
             WHERE datetime(timestamp) >= datetime('now', '-$hours hours')
+              AND event_type IN $filter_clause
             ORDER BY timestamp DESC;
         " 2>/dev/null || echo "❌ Database error"
         
@@ -220,9 +267,13 @@ show_recent() {
                 COUNT(*) as total_changes,
                 COUNT(DISTINCT filepath) as unique_files,
                 MIN(timestamp) as first_change,
-                MAX(timestamp) as last_change
+                MAX(timestamp) as last_change,
+                SUM(CASE WHEN event_type = 'CREATED' THEN 1 ELSE 0 END) as created,
+                SUM(CASE WHEN event_type = 'MODIFIED' THEN 1 ELSE 0 END) as modified,
+                SUM(CASE WHEN event_type = 'DELETED' THEN 1 ELSE 0 END) as deleted
             FROM file_changes 
-            WHERE datetime(timestamp) >= datetime('now', '-$hours hours');
+            WHERE datetime(timestamp) >= datetime('now', '-$hours hours')
+              AND event_type IN $filter_clause;
         " 2>/dev/null || echo "❌ Database error"
     else
         echo "❌ No database available"
@@ -259,7 +310,7 @@ export_data() {
     fi
 }
 
-# Main - Command handling
+# Main - Command handling with enhanced argument parsing
 case "$1" in
     "daemon")
         start_daemon
@@ -274,10 +325,10 @@ case "$1" in
         stop_daemon
         ;;
     "status")
-        show_status
+        show_status "$2"
         ;;
     "recent")
-        show_recent "$2"
+        show_recent "$2" "$3"
         ;;
     "export")
         export_data
@@ -305,23 +356,36 @@ case "$1" in
     *)
         echo "🛠️ Folder File Monitor - Available commands:"
         echo "============================================"
-        echo "  daemon           - Run as daemon (internal use)"
-        echo "  start            - Start monitor in background"
-        echo "  stop             - Stop monitor"
-        echo "  status           - View status and statistics (last 7 days)"
-        echo "  recent [HOURS]   - Show changes in last N hours (default: 24)"
-        echo "  export           - Export data to CSV"
-        echo "  add              - Add directory to monitoring"
-        echo "  list             - List configured directories"
-        echo "  restart          - Restart monitor"
-        echo "  logs             - View latest log lines"
+        echo "  daemon                    - Run as daemon (internal use)"
+        echo "  start                     - Start monitor in background"
+        echo "  stop                      - Stop monitor"
+        echo "  status [FILTER]           - View status and statistics (last 7 days)"
+        echo "  recent [HOURS] [FILTER]   - Show changes in last N hours (default: 24)"
+        echo "  export                    - Export data to CSV"
+        echo "  add                       - Add directory to monitoring"
+        echo "  list                      - List configured directories"
+        echo "  restart                   - Restart monitor"
+        echo "  logs                      - View latest log lines"
+        echo ""
+        echo "Event Filtering (FILTER can be):"
+        echo "  created                   - Show only CREATED events"
+        echo "  modified                  - Show only MODIFIED events"
+        echo "  deleted                   - Show only DELETED events"
+        echo "  created|modified          - Show CREATED and MODIFIED events"
+        echo "  modified|deleted          - Show MODIFIED and DELETED events"
+        echo "  created|deleted           - Show CREATED and DELETED events"
+        echo "  (no filter)               - Show all events (CREATED, MODIFIED, DELETED)"
         echo ""
         echo "Examples:"
-        echo "  $0 recent        - Show last 24 hours"
-        echo "  $0 recent 6      - Show last 6 hours"
-        echo "  $0 recent 168    - Show last 7 days"
+        echo "  $SCRIPT_FILE status                 - Show all events (last 7 days)"
+        echo "  $SCRIPT_FILE status modified        - Show only modified files (last 7 days)"
+        echo "  $SCRIPT_FILE status created|deleted - Show created and deleted files (last 7 days)"
+        echo "  $SCRIPT_FILE recent                 - Show all events (last 24 hours)"
+        echo "  $SCRIPT_FILE recent 6               - Show all events (last 6 hours)"
+        echo "  $SCRIPT_FILE recent 6 created       - Show only created files (last 6 hours)"
+        echo "  $SCRIPT_FILE recent 6 modified|deleted - Show modified and deleted (last 6 hours)"
         echo ""
-        echo "💡 Monitor starts automatically on login"
+        echo "💡 Monitor starts automatically on login with full event tracking"
         ;;
 esac
 SCRIPT_EOF
@@ -414,18 +478,23 @@ echo "Configuration saved in: $CONFIG_FILE"
 echo ""
 echo "Enhanced features:"
 echo "  - Full file paths in logs and status"
-echo "  - Date/time stamped error logging"
+echo "  - Date/time stamped error logging"  
 echo "  - Status shows last 7 days by default"
 echo "  - Recent command accepts hours parameter"
+echo "  - Complete event tracking: CREATED, MODIFIED, DELETED"
+echo "  - Advanced event filtering with pipe separator"
 echo ""
 echo "Main commands:"
-echo "   $SCRIPT_FILE status          - View status (last 7 days)"
-echo "   $SCRIPT_FILE recent          - View last 24 hours"
-echo "   $SCRIPT_FILE recent 6        - View last 6 hours"
-echo "   $SCRIPT_FILE recent 168      - View last 7 days"
-echo "   $SCRIPT_FILE add             - Add more directories"
-echo "   $SCRIPT_FILE list            - View configured directories"
-echo "   $SCRIPT_FILE export          - Export data"
+echo "   $SCRIPT_FILE status                    - View status (last 7 days, all events)"
+echo "   $SCRIPT_FILE status modified          - View only modified files (last 7 days)"
+echo "   $SCRIPT_FILE status created|deleted   - View created and deleted (last 7 days)"
+echo "   $SCRIPT_FILE recent                   - View last 24 hours (all events)"
+echo "   $SCRIPT_FILE recent 6                 - View last 6 hours (all events)"
+echo "   $SCRIPT_FILE recent 6 created         - View last 6 hours (created only)"
+echo "   $SCRIPT_FILE recent 6 modified|deleted - View last 6 hours (modified and deleted)"
+echo "   $SCRIPT_FILE add                      - Add more directories"
+echo "   $SCRIPT_FILE list                     - View configured directories"
+echo "   $SCRIPT_FILE export                   - Export data"
 echo ""
 echo "Important files:"
 echo "   Script: $SCRIPT_FILE"
